@@ -194,3 +194,35 @@ def test_side_table_when_requested():
     r = CatalogEngine().analyze(AnalyzeRequest(text="Стол приставной ЛДСП"))
     assert r.best_ktru.name == "Стол приставной"
 
+
+@needs_db
+def test_bare_dimension_defaults_to_mm_with_warning():
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Стол письменный высота 750 ширина 1.2"))
+    rows = {c.name: c for c in r.characteristics}
+    h = next(c for n, c in rows.items() if n.lower().startswith("высота"))
+    assert h.unit == "мм" and h.value == "750"
+    w = next(c for n, c in rows.items() if n.lower().startswith("ширина"))
+    assert w.unit in ("м", "мм") and w.value in ("1.2", "1200")
+    assert sum(1 for i in r.issues if i.type == "unit" and i.severity == "warning") >= 2
+    assert not any(i.severity == "error" for i in r.issues)
+
+
+@needs_db
+def test_no_duplicate_portal_material_row():
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Стол офисный ЛДСП"))
+    ldsp = [c for c in r.characteristics if c.value == "ЛДСП"]
+    assert [c.name for c in ldsp] == ["Вид материала столешницы"]
+
+
+@needs_db
+@pytest.mark.parametrize("text", ["Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый",
+                                  "Стул офисный", "Шкаф для документов"])
+def test_next_steps_match_table(text):
+    r = CatalogEngine().analyze(AnalyzeRequest(text=text))
+    rows = {c.name: c.value for c in r.characteristics}
+    asked = [s.split(": ", 1)[1] for s in r.next_steps if s.startswith(("Укажите: ", "Уточните: "))]
+    assert len(asked) == len(set(asked))
+    for n in asked:
+        assert n in rows and not rows[n]
+    assert not any(s.startswith("Уточните: ") for s in r.next_steps)
+
