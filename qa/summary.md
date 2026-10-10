@@ -155,3 +155,30 @@ Hacks: no holdout/errors strings in app code. New COMMON_WORDS list (config.py) 
 UI (headless Edge, port 8811, screenshots wt-qa/_out/ui-9e6d6a9/): TO42 «Исправьте «длина»: 27 мм» is now in the required list (not grey).
 MANUAL_CHECK 5-minute steps: 1 open/no console errors PASS; 2 TO42 highlight/corrections/badges PASS; 3 270 мм + Тип исполнения B -> «Карточка: заполнена» PASS;
 4 «Ключ» required 1, optional grey PASS; 5 desk 750->900->reset 750 PASS; 6 chair «бетон» error + highlight PASS; 7 pytest PASS (62). JS errors: none.
+
+
+# Final metrics on main 7aa9939 — 2026-10-10 19:05 MSK
+
+| Метрика | Основной набор (45) | Отложенный набор (45) |
+|---|---|---|
+| Код КТРУ на 1-м месте | 44 из 45 (98%) | 43 из 45 (96%) |
+| Код в топ-3 | 45 из 45 (100%) | 44 из 45 (98%) |
+| Статус верный | 45 из 45 (100%) | 43 из 45 (96%) |
+| Ложные тревоги на чистых (ошибка) | 1 из 42 (2%) — H31, в карточке реальная ошибка (лобзик 2,1 г) | |
+| Предупреждения на чистых (мягкие) | 3 из 42 (7%) | |
+| Внесённые ошибки пойманы* | 30 из 30 (100%): единицы 8/8, числа 8/8, несуществующие 7/7, опечатки 7/7 | |
+| Время на запрос, p50 / p95 | 53–98 / 126–194 мс (2 прогона) | 49–60 / 102–138 мс |
+| «Сломай решение» (qa/break.csv) | 28 из 32 (88%), 0 ответов 500, 0 ошибок JS | |
+
+\* набор известен разработчикам — оценка оптимистичная. По категориям отложенного набора (код 1-й / статус): мебель 15/15, 15/15; инструменты 15/15, 14/15; одежда 13/15, 14/15.
+
+## «Сломай решение» (qa/break.csv, qa/run_break.py; API on port 8814 + headless Edge for 14 key cases)
+API: 28 из 32 PASS, no HTTP 500. Browser: 14 из 14 without JS errors, alerts or injected nodes.
+FAIL:
+- B01/B02 «Ключ гаечный разводной мощность 100 (Вт)»: «Мощность 100 Вт» accepted as a portal characteristic of a hand wrench, no warning.
+- B16 synonyms: «вес 500 г» -> portal «Масса», «масса 500 г» -> KTRU «Масса молотка» (same code, different characteristic).
+- B27 «Стол письменный высота -750 мм»: the negative value is silently dropped (no row, no issue); 0 and huge values are flagged.
+Notes (PASS on safety, recognition bugs): B23/B24 an HTML tag before the text («<script>… стул офисный») -> not_found, product_guess «<script>alert»;
+markup is escaped in the UI. Empty text: API 422 (B12), whitespace -> not_found; in the UI an empty submit sends no request.
+No CSV/batch endpoint or UI exists; 100 rows (45 dev + 45 holdout + 10 broken) through /api/analyze: 9.9 s sequential, 5.9 s with 4 parallel, codes 200/422 only.
+Very long text: 9.8k chars 130 ms, 98k chars 0.6 s.
