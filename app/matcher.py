@@ -9,6 +9,7 @@ from rapidfuzz import fuzz, process
 from rapidfuzz.distance import Levenshtein  # noqa: F401  (kept for typo helpers)
 
 from app.catalog import Catalog, KtruEntry, norm, tokens
+from app.config import CHAR_ALIASES
 from app.models import Candidate, Issue, KtruCandidate, NarrowingStep
 from app.parser import RawKV
 from app.units import dimension, expected_dimension
@@ -48,6 +49,18 @@ HEAD_SYNONYMS = {
     "сапог": "обувь специальная", "туфл": "обувь", "кроссовк": "обувь",
 }
 OK_MARGIN = 8.0
+
+
+def canonical_label(cnt: Counter, raw_name: str) -> str:
+    """KTRU name of the characteristic (most common among candidates), else capitalised alias."""
+    if cnt:
+        return sorted(cnt.items(), key=lambda x: (-x[1], x[0]))[0][0]
+    alias = CHAR_ALIASES.get(raw_name.strip().lower())
+    return alias or (raw_name[:1].upper() + raw_name[1:])
+
+
+WORKWEAR_HEADS = ("костюм", "куртк", "брюк", "полукомбинезон", "комбинезон", "жилет", "халат", "фартук")
+PROTECTION_STEMS = ("изолир", "защит", "хирург", "сигнальн", "огнестойк", "термостойк", "кислот")
 
 
 def work_signal(query: str) -> bool:
@@ -176,12 +189,18 @@ def narrow_ktru(
         s1 = s1 + np.where(np.char.startswith(okp, "28.24"), 20.0,
                            np.where(np.char.startswith(okp, "25.7"), -15.0, 0.0))
         res.power_tool = True
-    qws = norm(product).split()
+    qws = norm(query).split()
     head0 = qws[0] if qws else ""
     syn = next((v for k, v in HEAD_SYNONYMS.items() if head0.startswith(k)), None)
     if syn and domain in ("clothing", None):
         s1 = np.maximum(s1, _scores(syn + " " + query, names, toks) * 0.95)
-    if domain in ("clothing", None) and work_signal(product):
+    if domain in ("clothing", None) and work_signal(query):
+        if any(head0.startswith(h) for h in WORKWEAR_HEADS) and not any(
+            w.startswith(p) for w in qws for p in PROTECTION_STEMS
+        ):
+            gender = "женская" if any(w.startswith("женск") for w in qws) else "мужская"
+            s1 = np.maximum(s1, _scores(f"спецодежда {gender} " + query, names, toks) * 1.0 + 10.0
+                            * np.array([n.startswith("спецодежда " + gender) for n in names], dtype=float))
         okp = cat.okpd_for(pool)
         s1 = s1 + np.where(np.char.startswith(okp, "14.12") | np.char.startswith(okp, "15.20.3"), 30.0,
                            np.where(np.char.startswith(okp, "14.14") | np.char.startswith(okp, "14.19"), -20.0, 0.0))
@@ -210,7 +229,7 @@ def narrow_ktru(
         res.issues.append(Issue.make(
             "missing", field="Наименование", value=product,
             message="Не удалось сопоставить описание ни с одной позицией КТРУ в скоупе",
-            suggestions=["Уточните тип товара (стол/стул/куртка/дрель…)"], severity="error",
+            suggestions=["Уточните тип товара (стол/стул/куртка/дрель…)"], severity="warning",
         ))
         res.next_steps += ["Добавьте явное название товара", "Укажите 2–3 ключевые характеристики"]
         return res
@@ -235,12 +254,14 @@ def narrow_ktru(
         if kv.unit and exp_dim and dimension(kv.unit) and dimension(kv.unit) != exp_dim:
             continue  # wrong unit: reported by validation, must not filter codes
         ok_c, bad_c, has_spec = [], [], 0
+        label_cnt: Counter[str] = Counter()
         for c in cands:
             sp = cat.find_spec(c[1], kv.name)
             if sp is None:
                 ok_c.append(c)
                 continue
             has_spec += 1
+            label_cnt[sp.name] += 1
             r = check_value(sp, kv.value, kv.unit, domain, emit=False)
             if r.ok:
                 c[0] += 8 if (sp.enums or sp.is_numeric) else 4
@@ -259,7 +280,7 @@ def narrow_ktru(
         else:
             reason = f"Характеристика есть у {has_spec} кодов, значение допустимо"
         res.steps.append(NarrowingStep(
-            step=step_no, label=kv.name, stage="char_filter", remaining=len(cands),
+            step=step_no, label=canonical_label(label_cnt, kv.name), stage="char_filter", remaining=len(cands),
             removed=len(bad_c), reason=reason, removed_codes=[c[1].code for c in bad_c[:10]],
             top=[_cand(e, s, m) for s, e, m in sorted(cands, key=lambda x: -x[0])[:8]],
         ))

@@ -8,7 +8,7 @@ from app.config import CHAR_ALIASES
 from app.models import CharSource, Issue, ParsedCharacteristic
 from app.parser import RawKV, canonicalize_name
 from app.units import canon_unit
-from app.validate import check_value, sanity_issues
+from app.validate import check_value, is_numeric_spec, numeric_view, sanity_issues
 
 
 def unify_characteristics(
@@ -37,7 +37,9 @@ def unify_characteristics(
             pc.source = CharSource.KTRU
             pc.required = spec.required
             pc.allowed = spec.allowed_enums()
-            pc.min, pc.max = spec.bounds() if spec.is_numeric else (None, None)
+            if is_numeric_spec(spec):
+                pc.min, pc.max, nu = numeric_view(spec, domain)
+                pc.unit = nu or pc.unit
             pc.confidence = 0.95
             pc.notes = f"Характеристика КТРУ {best.code}"
             if spec.is_numeric and spec.unit:
@@ -86,10 +88,10 @@ def unify_characteristics(
         for k, sp in best.specs.items():
             if not sp.required or k in used:
                 continue
-            lo, hi = sp.bounds() if sp.is_numeric else (None, None)
+            lo, hi, nu = numeric_view(sp, domain) if is_numeric_spec(sp) else (None, None, canon_unit(sp.unit) or sp.unit)
             out.append(ParsedCharacteristic(
                 name=sp.name, raw_name="", canonical_name=sp.name, value="",
-                unit=canon_unit(sp.unit) or sp.unit, source=CharSource.KTRU, required=True,
+                unit=nu, source=CharSource.KTRU, required=True,
                 allowed=sp.allowed_enums(), min=lo, max=hi, confidence=0.0,
                 notes="Обязательная характеристика КТРУ — не заполнена",
             ))
