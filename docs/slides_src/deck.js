@@ -403,8 +403,8 @@ function fFill(p, n, t) {
   card(s, [6.83, 1.85, 5.65, 4.75]);
   label(s, 'Пакетная проверка (CSV): ' + F.batch.rows + ' строк за ' + F.batch.time, [7.03, 1.97, 5.3, 0.3]);
   const bsz = pngSize(path.join(SRC, 'screens', 'batch_view.png')), bw = 5.25, bh = bw * bsz.h / bsz.w;
-  // crop starts at the «Обработано …» line (≈462 px of 1425-px-wide screenshot)
-  s.addImage({ path: path.join(SRC, 'screens', 'batch_view.png'), x: 7.03, y: 2.4, w: bw, h: bh, sizing: { type: 'crop', x: 0, y: bw * 462 / bsz.w, w: bw, h: 3.05 } });
+  // crop starts at the «Обработано …» line (≈440 px of 1425-px-wide screenshot)
+  s.addImage({ path: path.join(SRC, 'screens', 'batch_view.png'), x: 7.03, y: 2.4, w: bw, h: bh, sizing: { type: 'crop', x: 0, y: bw * 440 / bsz.w, w: bw, h: 3.05 } });
   const b = F.batch;
   body(s, [{ text: 'Код: ', options: { bold: true } }, { text: b.determined + ' определён · ' + b.ambiguous + ' неоднозначно · ' + (b.notFound ? b.notFound + ' не найден' : b.outOfScope + ' не наша категория'), options: { breakLine: true } },
     { text: 'Карточка: ', options: { bold: true } }, { text: b.complete + ' заполнена · ' + b.incomplete + ' неполная · ' + b.withErrors + ' с ошибками', options: { breakLine: true } },
