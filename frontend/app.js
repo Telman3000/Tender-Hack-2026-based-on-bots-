@@ -6,7 +6,7 @@ const STATUS_LABELS = {
   ok: "Код КТРУ определён",
   need_more: "Нужны уточнения",
   ambiguous: "Несколько подходящих кодов",
-  error: "Ошибка",
+  error: "Есть ошибки в характеристиках",
 };
 const STEP_LABELS = { initial: "Все коды", domain: "Категория", okpd2: "ОКПД2", name: "Наименование" };
 
@@ -55,7 +55,7 @@ function normIssue(i) {
 function normSteps(data) {
   return (data.narrowing || []).map((s, idx) => {
     let label = s.label;
-    const step = s.step || s.stage || "";
+    const step = String(s.stage || (typeof s.step === "string" ? s.step : "") || "");
     if (!label) {
       if (step.startsWith("char:")) label = "Характеристика: " + step.slice(5);
       else label = STEP_LABELS[step] || step || (idx === 0 ? "Все коды" : `Шаг ${idx}`);
@@ -136,10 +136,11 @@ function charsTable(issues) {
   const rows = state.chars
     .map((c, i) => {
       const iss = rowIssue(c);
-      const cls = iss ? (iss.severity === "error" ? "err" : "warn") : "";
+      const emptyReq = c.required && !String(c.value ?? "").trim();
+      const cls = iss ? (iss.severity === "error" ? "err" : "warn") : emptyReq ? "warn" : "";
       return `<tr class="${cls}">
         <td><input data-i="${i}" data-k="name" value="${escapeHtml(c.name)}" placeholder="Название" />
-          ${c.required ? `<div class="hint">обязательная</div>` : ""}</td>
+          ${c.required ? `<div class="hint">обязательная${String(c.value ?? "").trim() ? "" : " · заполните"}</div>` : ""}</td>
         <td class="muted">${escapeHtml(c.user_input)}</td>
         <td>${valueEditor(c, i)}${iss && iss.expected ? `<div class="hint">ожидается: ${escapeHtml(iss.expected)}</div>` : ""}</td>
         <td><input data-i="${i}" data-k="unit" value="${escapeHtml(c.unit)}" style="width:70px" /></td>
@@ -153,8 +154,10 @@ function charsTable(issues) {
     <div style="margin-top:10px"><button class="btn ghost small" id="addRow">+ Добавить характеристику</button></div>`;
 }
 function issuesBlock(issues) {
-  const missing = issues.filter((x) => x.type === "missing" && x.field);
+  // обязательные, уже есть строкой в таблице (пусть и пустой), не дублируем чипом
+  const missing = issues.filter((x) => x.type === "missing" && x.field && !state.chars.some((c) => norm(c.name) === norm(x.field)));
   const other = issues.filter((x) => !(x.type === "missing" && x.field));
+  const missingInTable = issues.filter((x) => x.type === "missing" && x.field && !missing.includes(x)).length;
   const list = other
     .map((x, k) => `<div class="issue ${x.severity === "error" ? "error" : ""}">
       <div>${x.field ? `<b>${escapeHtml(x.field)}:</b> ` : ""}${escapeHtml(x.message)}</div>
@@ -170,7 +173,8 @@ function issuesBlock(issues) {
         .map((x) => `<button class="chip add" data-miss="${escapeHtml(x.field)}">+ ${escapeHtml(x.field)}</button>`)
         .join("")}</div>`
     : "";
-  return { html: list + miss || `<div class="muted">Замечаний нет</div>`, other };
+  const inTable = missingInTable ? `<div class="lbl">Заполните обязательные характеристики в таблице: ${missingInTable}</div>` : "";
+  return { html: list + miss + inTable || `<div class="muted">Замечаний нет</div>`, other: other.filter((x) => !(x.type === "missing" && x.field)) };
 }
 function funnelBlock(steps, candidates) {
   if (!steps.length) return `<div class="muted">Нет данных</div>`;
@@ -274,6 +278,7 @@ function bind(otherIssues) {
     }));
   root.querySelectorAll("[data-miss]").forEach((el) =>
     el.addEventListener("click", () => {
+      if (state.chars.some((c) => norm(c.name) === norm(el.dataset.miss))) return;
       state.chars.push(normChar({ name: el.dataset.miss, value: "", source: "ktru", required: true }));
       draw();
       const v = root.querySelectorAll('[data-k="value"]');
