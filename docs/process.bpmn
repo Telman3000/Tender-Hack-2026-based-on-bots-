@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+             id="Definitions_1"
+             targetNamespace="http://tenderhack2026.local/bpmn">
+  <process id="ClassifyProductToKTRU" name="Автозаполнение СТЕ → КТРУ" isExecutable="false">
+    <startEvent id="Start" name="Ввод описания"/>
+    <task id="DetectDomain" name="Определить домен"/>
+    <task id="ParseText" name="Разобрать текст"/>
+    <task id="Unify" name="Унифицировать характеристики"/>
+    <task id="Score" name="Оценить кандидатов КТРУ"/>
+    <task id="Narrow" name="Сузить по характеристикам"/>
+    <exclusiveGateway id="UniqueGw" name="Код однозначен?"/>
+    <task id="CheckReq" name="Проверить обязательные"/>
+    <exclusiveGateway id="MissingGw" name="Есть пробелы?"/>
+    <endEvent id="EndOk" name="КТРУ выбран"/>
+    <endEvent id="EndNeed" name="Нужны уточнения"/>
+    <endEvent id="EndAmb" name="Неоднозначно"/>
+
+    <sequenceFlow id="f1" sourceRef="Start" targetRef="DetectDomain"/>
+    <sequenceFlow id="f2" sourceRef="DetectDomain" targetRef="ParseText"/>
+    <sequenceFlow id="f3" sourceRef="ParseText" targetRef="Unify"/>
+    <sequenceFlow id="f4" sourceRef="Unify" targetRef="Score"/>
+    <sequenceFlow id="f5" sourceRef="Score" targetRef="Narrow"/>
+    <sequenceFlow id="f6" sourceRef="Narrow" targetRef="UniqueGw"/>
+    <sequenceFlow id="f7" name="да" sourceRef="UniqueGw" targetRef="CheckReq"/>
+    <sequenceFlow id="f8" name="нет" sourceRef="UniqueGw" targetRef="EndAmb"/>
+    <sequenceFlow id="f9" sourceRef="CheckReq" targetRef="MissingGw"/>
+    <sequenceFlow id="f10" name="нет" sourceRef="MissingGw" targetRef="EndOk"/>
+    <sequenceFlow id="f11" name="да" sourceRef="MissingGw" targetRef="EndNeed"/>
+  </process>
+</definitions>

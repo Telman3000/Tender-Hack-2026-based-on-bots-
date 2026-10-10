@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.cover
+
+# Data (heavy raw materials вЂ” keep out of git)
+_materials/
+data/raw/
+data/processed/*.db
+data/processed/*.sqlite
+data/processed/*.sqlite3
+data/processed/ktru_*.jsonl
+data/cache/
+*.xlsx
+*.xml
+*.zip
+!docs/**
+
+# Node / frontend build
+node_modules/
+dist/
+.build/
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Whisper / ML caches
+models/
+*.pt
+*.bin
+*.onnx
+
+# Local transcripts & temp
+transcripts/
+transcribe_audio.py
+*.m4a
+*.wav
+*.mp3
+
+# Secrets
+.env.*
+!.env.example
+credentials*.json
+secrets/
+
+catalog.db
+мысли/

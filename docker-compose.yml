@@ -1,0 +1,9 @@
+services:
+  ste-autofill:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/processed:/app/data/processed
+    environment:
+      - PYTHONUNBUFFERED=1
