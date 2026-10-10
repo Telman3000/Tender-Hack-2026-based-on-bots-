@@ -6,6 +6,7 @@ const STATUS_LABELS = {
   ok: "Код КТРУ определён",
   need_more: "Нужны уточнения",
   ambiguous: "Несколько подходящих кодов",
+  not_found: "Товар не распознан",
   error: "Есть ошибки в характеристиках",
 };
 const STEP_LABELS = { initial: "Все коды", domain: "Категория", okpd2: "ОКПД2", name: "Наименование" };

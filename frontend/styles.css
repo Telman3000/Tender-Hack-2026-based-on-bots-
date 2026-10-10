@@ -28,7 +28,7 @@ textarea:focus,select:focus,input:focus{outline:none;border-color:var(--accent);
 .chip.add{color:var(--orange);border-color:#f1c98f}
 .status{padding:10px 14px;border-radius:6px;margin-bottom:16px;font-weight:600;border:1px solid var(--line);background:#fff}
 .status.ok{background:var(--green-l);color:var(--green);border-color:#bfe3cc}
-.status.need_more,.status.ambiguous{background:var(--orange-l);color:var(--orange);border-color:#f1d3a8}
+.status.need_more,.status.ambiguous,.status.not_found{background:var(--orange-l);color:var(--orange);border-color:#f1d3a8}
 .status.error{background:var(--red-l);color:var(--red);border-color:#f3c1bd}
 .result.empty{color:var(--muted);background:#fff;border:1px dashed var(--line);border-radius:8px;padding:40px;text-align:center}
 .muted{color:var(--muted);font-size:13px}
