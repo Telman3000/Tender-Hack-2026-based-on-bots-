@@ -1,46 +1,91 @@
-﻿id,category,type,query,expected_code,expected_status,comment
-CL01,clothing,clean,Костюм рабочий мужской л08-КБР размер 48-50 рост 170-176 ткань смесовая,14.12,ok|ambiguous,portal: Костюм рабочий/л08-КБР; спецодежда мужская
-CL02,clothing,clean,Куртка зимняя Аляска удлиненная черная мужская размер 48-50 рост 170-176 подкладка полиэстер,14.13,ok|ambiguous,portal: Куртка зимняя Аляска; утепленная спецодежда; GT 14.12->14.13 (verified vs ACTIVE KTRU XML)
-CL03,clothing,clean,Халат женский для уборщиц у01-ХЛ рукав длинный размер 48-50 рост 158-164,14.12.2|14.12.30.130,ok|ambiguous|need_more,portal: Халат Вилора у01-ХЛ; спецодежда женская; GT 14.12.2->14.12.2|14.12.30.130 (verified vs ACTIVE KTRU XML); need_more allowed: required char absent from query: Обхват груди
-CL04,clothing,clean,Футболка хлопок 100% красная размер 48-50 масса 179 г,14.14.3,ok|ambiguous,portal: Футболка ОФИСМАГ
-CL05,clothing,clean,Ботинки рабочие утепленные верх натуральная кожа подошва полиуретан литьевой метод крепления размер 47,15.20.3,ok|ambiguous|need_more,portal: Ботинки Профи утепл.; обувь защитная; need_more allowed: required char absent from query: Вид обуви/Половой признак/Сорт
-CL06,clothing,incomplete,Костюм рабочий,14.12,need_more|ambiguous,no size/height/fabric
-CL07,clothing,incomplete,Куртка,14.1,need_more|ambiguous,no gender/season/size; group 14.12/14.13
-CL08,clothing,incomplete,Халат размер 48,14.12,need_more|ambiguous,no gender/material
-CL09,clothing,incomplete,Ботинки,15.20,need_more|ambiguous,no purpose/material
-CL10,clothing,incomplete,Футболка белая,14.14.3,need_more|ambiguous,no size/material
-CL11,clothing,error,Костюм рабочий размер 148-150 рост 1700-1760 см,14.12,need_more|ambiguous|error,nonexistent size/height
-CL12,clothing,error,Куртка зимняя мужская размер 48-50 масса 2 литра,14.13,need_more|ambiguous|error,wrong unit for mass; GT 14.12->14.13 (verified vs ACTIVE KTRU XML)
-CL13,clothing,error,Кастюм рабочий мужкой размер 48-50,14.12,need_more|ambiguous|error,typos
-CL14,clothing,error,Kurtka zimnyaya muzhskaya razmer 50,14.13,need_more|ambiguous|error,translit; GT 14.12->14.13 (verified vs ACTIVE KTRU XML)
-CL15,clothing,error,Футболка хлопок 300% размер 48-50,14.14.3,need_more|ambiguous|error,impossible composition
-FU16,furniture,clean,Стол офисный угловой письменный столешница ЛДСП толщина 16 мм размер 1200х750х1200 мм кромка ПВХ,31.01,ok|ambiguous|need_more,portal: Стол офисный угловой; need_more allowed: required char absent from query: Тип каркаса/Вид материала каркаса
-FU17,furniture,clean,Стул офисный обивка ткань цвет черный высота 820 мм глубина 530 мм масса 4 кг,31.01,ok|ambiguous|need_more,portal: Стул Дебют Серна; need_more allowed: required char absent from query: Наличие мягкого сиденья/спинки
-FU18,furniture,clean,Шкаф металлический для документов сварной высота 660 мм ширина 420 мм глубина 350 мм масса 19 кг 2 полки,31.01,ok|ambiguous|need_more,"portal: Шкаф КБС-011Т; need_more allowed: top code 31.01.11.122 «Шкаф архивный металлический» (ACTIVE) requires «Тип дверей шкафа», absent from query"
-FU19,furniture,clean,Кресло офисное обивка ткань цвет черный высота 1080 мм ширина 650 мм глубина 450 мм,31.01,ok|ambiguous,portal: Кресло Протон Стимул Люкс
-FU20,furniture,clean,Стеллаж металлический высота 2000 мм ширина 1000 мм глубина 300 мм 6 полок нагрузка на полку 100 кг,31.09.11.120,ok|ambiguous,portal: Стеллаж УНИВЕРСАЛ; GT 31.01->31.09.11.120 (verified vs ACTIVE KTRU XML)
-FU21,furniture,incomplete,Стол,31.0,need_more|ambiguous,no type/material/size
-FU22,furniture,incomplete,Стул офисный,31.01,need_more|ambiguous,no upholstery/size
-FU23,furniture,incomplete,Шкаф для документов,31.01,need_more|ambiguous,no material/size
-FU24,furniture,incomplete,Кресло черное,31.0,need_more|ambiguous,office vs other
-FU25,furniture,incomplete,Стеллаж 6 полок,31.01,need_more|ambiguous,no material/size
-FU26,furniture,error,Стол офисный высота 75000 мм ширина 1200 мм,31.01,need_more|ambiguous|error,nonexistent height
-FU27,furniture,error,Стул офисный высота 820 кг цвет черный,31.01,need_more|ambiguous|error,wrong unit
-FU28,furniture,error,Стол офисный ЛДСП цвет фиолетово-прозрачный материал плазма,31.01,need_more|ambiguous|error,nonexistent values
-FU29,furniture,error,Шкав металический для дакументов,31.01,need_more|ambiguous|error,typos
-FU30,furniture,error,Stol ofisnyj LDSP 1200x750 mm,31.01,need_more|ambiguous|error,translit
-TO31,tools,clean,Ключ гаечный кольцевой двухсторонний 17х19 мм сталь 40Х длина 270 мм покрытие цинковое,25.73.3,ok|ambiguous|need_more,portal: Ключ гаечный 17х19; need_more allowed: required char absent from query: Тип исполнения (active KTRU only for разводной)
-TO32,tools,clean,Плоскогубцы комбинированные длина 160 мм материал губок инструментальная сталь рукоятка двухкомпонентная,25.73.3,ok|ambiguous,portal: Плоскогубцы SPARTA
-TO33,tools,clean,Дрель ударная мощность 650 Вт диаметр сверления дерево 30 мм масса 3.2 кг,28.24.1,ok|ambiguous|need_more,portal: Bosch PSB 650; need_more allowed: required char absent from query: Тип питания/диаметр патрона/обороты
-TO34,tools,clean,Отвертка аккумуляторная напряжение 3.6 В масса 900 г 1 скорость,28.24.1,ok|ambiguous,portal: Bort BAS
-TO35,tools,clean,Молоток отбойный мощность 1510 Вт масса 15.7 кг,28.24.10.000,ok|ambiguous|need_more,portal: Makita HM1203C; GT 28.24.1->28.24.10.000 (verified vs ACTIVE KTRU XML); need_more allowed: required char absent from query: no active KTRU position for отбойный молоток
-TO36,tools,incomplete,Молоток,25.73|28.24,need_more|ambiguous,hand vs powered
-TO37,tools,incomplete,Ключ,25.73.3,need_more|ambiguous,type/size missing
-TO38,tools,incomplete,Дрель,28.24.1,need_more|ambiguous,no power/type
-TO39,tools,incomplete,Пила,25.73.2|28.24.1,need_more|ambiguous,hand vs electric
-TO40,tools,incomplete,Отвертка,25.73.3|28.24.1,need_more|ambiguous,hand vs cordless
-TO41,tools,error,Дрель ударная мощность 650 кг масса 3 Вт,28.24.1,need_more|ambiguous|error,swapped units
-TO42,tools,error,Ключ гаечный 170х190 мм длина 27 м,25.73.3,need_more|ambiguous|error,nonexistent size
-TO43,tools,error,Плоскагубцы камбинированые 160мм,25.73.3,need_more|ambiguous|error,typos
-TO44,tools,error,Drel udarnaya 650 Vt,28.24.1,need_more|ambiguous|error,translit
-TO45,tools,error,Молоток отбойный напряжение 2200000 В,28.24.10.000,need_more|ambiguous|error,nonexistent voltage; GT 28.24.1->28.24.10.000 (verified vs ACTIVE KTRU XML)
+﻿id,category,type,query,expected_code,expected_status,comment,set,group_id
+CL01,clothing,clean,Костюм рабочий мужской л08-КБР размер 48-50 рост 170-176 ткань смесовая,14.12,ok|ambiguous,portal: Костюм рабочий/л08-КБР; спецодежда мужская,legacy,
+CL02,clothing,clean,Куртка зимняя Аляска удлиненная черная мужская размер 48-50 рост 170-176 подкладка полиэстер,14.13,ok|ambiguous,portal: Куртка зимняя Аляска; утепленная спецодежда; GT 14.12->14.13 (verified vs ACTIVE KTRU XML),legacy,
+CL03,clothing,clean,Халат женский для уборщиц у01-ХЛ рукав длинный размер 48-50 рост 158-164,14.12.2|14.12.30.130,ok|ambiguous|need_more,portal: Халат Вилора у01-ХЛ; спецодежда женская; GT 14.12.2->14.12.2|14.12.30.130 (verified vs ACTIVE KTRU XML); need_more allowed: required char absent from query: Обхват груди,legacy,
+CL04,clothing,clean,Футболка хлопок 100% красная размер 48-50 масса 179 г,14.14.3,ok|ambiguous,portal: Футболка ОФИСМАГ,legacy,
+CL05,clothing,clean,Ботинки рабочие утепленные верх натуральная кожа подошва полиуретан литьевой метод крепления размер 47,15.20.3,ok|ambiguous|need_more,portal: Ботинки Профи утепл.; обувь защитная; need_more allowed: required char absent from query: Вид обуви/Половой признак/Сорт,legacy,
+CL06,clothing,incomplete,Костюм рабочий,14.12,need_more|ambiguous,no size/height/fabric,legacy,
+CL07,clothing,incomplete,Куртка,14.1,need_more|ambiguous,no gender/season/size; group 14.12/14.13,legacy,
+CL08,clothing,incomplete,Халат размер 48,14.12,need_more|ambiguous,no gender/material,legacy,
+CL09,clothing,incomplete,Ботинки,15.20,need_more|ambiguous,no purpose/material,legacy,
+CL10,clothing,incomplete,Футболка белая,14.14.3,need_more|ambiguous,no size/material,legacy,
+CL11,clothing,error,Костюм рабочий размер 148-150 рост 1700-1760 см,14.12,need_more|ambiguous|error,nonexistent size/height,legacy,
+CL12,clothing,error,Куртка зимняя мужская размер 48-50 масса 2 литра,14.13,need_more|ambiguous|error,wrong unit for mass; GT 14.12->14.13 (verified vs ACTIVE KTRU XML),legacy,
+CL13,clothing,error,Кастюм рабочий мужкой размер 48-50,14.12,need_more|ambiguous|error,typos,legacy,
+CL14,clothing,error,Kurtka zimnyaya muzhskaya razmer 50,14.13,need_more|ambiguous|error,translit; GT 14.12->14.13 (verified vs ACTIVE KTRU XML),legacy,
+CL15,clothing,error,Футболка хлопок 300% размер 48-50,14.14.3,need_more|ambiguous|error,impossible composition,legacy,
+FU16,furniture,clean,Стол офисный угловой письменный столешница ЛДСП толщина 16 мм размер 1200х750х1200 мм кромка ПВХ,31.01,ok|ambiguous|need_more,portal: Стол офисный угловой; need_more allowed: required char absent from query: Тип каркаса/Вид материала каркаса,legacy,
+FU17,furniture,clean,Стул офисный обивка ткань цвет черный высота 820 мм глубина 530 мм масса 4 кг,31.01,ok|ambiguous|need_more,portal: Стул Дебют Серна; need_more allowed: required char absent from query: Наличие мягкого сиденья/спинки,legacy,
+FU18,furniture,clean,Шкаф металлический для документов сварной высота 660 мм ширина 420 мм глубина 350 мм масса 19 кг 2 полки,31.01,ok|ambiguous|need_more,"portal: Шкаф КБС-011Т; need_more allowed: top code 31.01.11.122 «Шкаф архивный металлический» (ACTIVE) requires «Тип дверей шкафа», absent from query",legacy,
+FU19,furniture,clean,Кресло офисное обивка ткань цвет черный высота 1080 мм ширина 650 мм глубина 450 мм,31.01,ok|ambiguous,portal: Кресло Протон Стимул Люкс,legacy,
+FU20,furniture,clean,Стеллаж металлический высота 2000 мм ширина 1000 мм глубина 300 мм 6 полок нагрузка на полку 100 кг,31.09.11.120,ok|ambiguous,portal: Стеллаж УНИВЕРСАЛ; GT 31.01->31.09.11.120 (verified vs ACTIVE KTRU XML),legacy,
+FU21,furniture,incomplete,Стол,31.0,need_more|ambiguous,no type/material/size,legacy,
+FU22,furniture,incomplete,Стул офисный,31.01,need_more|ambiguous,no upholstery/size,legacy,
+FU23,furniture,incomplete,Шкаф для документов,31.01,need_more|ambiguous,no material/size,legacy,
+FU24,furniture,incomplete,Кресло черное,31.0,need_more|ambiguous,office vs other,legacy,
+FU25,furniture,incomplete,Стеллаж 6 полок,31.01,need_more|ambiguous,no material/size,legacy,
+FU26,furniture,error,Стол офисный высота 75000 мм ширина 1200 мм,31.01,need_more|ambiguous|error,nonexistent height,legacy,
+FU27,furniture,error,Стул офисный высота 820 кг цвет черный,31.01,need_more|ambiguous|error,wrong unit,legacy,
+FU28,furniture,error,Стол офисный ЛДСП цвет фиолетово-прозрачный материал плазма,31.01,need_more|ambiguous|error,nonexistent values,legacy,
+FU29,furniture,error,Шкав металический для дакументов,31.01,need_more|ambiguous|error,typos,legacy,
+FU30,furniture,error,Stol ofisnyj LDSP 1200x750 mm,31.01,need_more|ambiguous|error,translit,legacy,
+TO31,tools,clean,Ключ гаечный кольцевой двухсторонний 17х19 мм сталь 40Х длина 270 мм покрытие цинковое,25.73.3,ok|ambiguous|need_more,portal: Ключ гаечный 17х19; need_more allowed: required char absent from query: Тип исполнения (active KTRU only for разводной),legacy,
+TO32,tools,clean,Плоскогубцы комбинированные длина 160 мм материал губок инструментальная сталь рукоятка двухкомпонентная,25.73.3,ok|ambiguous,portal: Плоскогубцы SPARTA,legacy,
+TO33,tools,clean,Дрель ударная мощность 650 Вт диаметр сверления дерево 30 мм масса 3.2 кг,28.24.1,ok|ambiguous|need_more,portal: Bosch PSB 650; need_more allowed: required char absent from query: Тип питания/диаметр патрона/обороты,legacy,
+TO34,tools,clean,Отвертка аккумуляторная напряжение 3.6 В масса 900 г 1 скорость,28.24.1,ok|ambiguous,portal: Bort BAS,legacy,
+TO35,tools,clean,Молоток отбойный мощность 1510 Вт масса 15.7 кг,28.24.10.000,ok|ambiguous|need_more,portal: Makita HM1203C; GT 28.24.1->28.24.10.000 (verified vs ACTIVE KTRU XML); need_more allowed: required char absent from query: no active KTRU position for отбойный молоток,legacy,
+TO36,tools,incomplete,Молоток,25.73|28.24,need_more|ambiguous,hand vs powered,legacy,
+TO37,tools,incomplete,Ключ,25.73.3,need_more|ambiguous,type/size missing,legacy,
+TO38,tools,incomplete,Дрель,28.24.1,need_more|ambiguous,no power/type,legacy,
+TO39,tools,incomplete,Пила,25.73.2|28.24.1,need_more|ambiguous,hand vs electric,legacy,
+TO40,tools,incomplete,Отвертка,25.73.3|28.24.1,need_more|ambiguous,hand vs cordless,legacy,
+TO41,tools,error,Дрель ударная мощность 650 кг масса 3 Вт,28.24.1,need_more|ambiguous|error,swapped units,legacy,
+TO42,tools,error,Ключ гаечный 170х190 мм длина 27 м,25.73.3,need_more|ambiguous|error,nonexistent size,legacy,
+TO43,tools,error,Плоскагубцы камбинированые 160мм,25.73.3,need_more|ambiguous|error,typos,legacy,
+TO44,tools,error,Drel udarnaya 650 Vt,28.24.1,need_more|ambiguous|error,translit,legacy,
+TO45,tools,error,Молоток отбойный напряжение 2200000 В,28.24.10.000,need_more|ambiguous|error,nonexistent voltage; GT 28.24.1->28.24.10.000 (verified vs ACTIVE KTRU XML),legacy,
+CL46,clothing,clean,Костюм рабочий женский размер 44-46 рост 158-164 ткань смесовая,14.12,ok|ambiguous|need_more,"real: женский рабочий костюм, группа спецодежды 14.12",real,cl-01
+CL47,clothing,clean,Костюм рабочий мужской летний размер 56-58 рост 182-188 ткань хлопок,14.12,ok|ambiguous|need_more,"real: летний мужской костюм, группа 14.12",real,cl-02
+CL48,clothing,clean,Брюки рабочие мужские размер 48-50 рост 170-176 ткань смесовая,14.12,ok|ambiguous|need_more,"real: брюки спецодежды, группа 14.12",real,cl-03
+CL49,clothing,clean,Куртка зимняя мужская удлиненная черная размер 52-54 рост 176-182 подкладка полиэстер,14.13,ok|ambiguous|need_more,"real: зимняя куртка, группа 14.13",real,cl-04
+CL50,clothing,clean,Куртка рабочая демисезонная мужская размер 50-52 цвет синий,14.13,ok|ambiguous|need_more,"real: демисезонная куртка, группа 14.13",real,cl-05
+CL51,clothing,clean,Куртка утепленная женская размер 44-46 рост 164-170 подкладка полиэстер,14.13,ok|ambiguous|need_more,"real: женская утепленная куртка, группа 14.13",real,cl-06
+CL52,clothing,clean,Халат женский рабочий рукав длинный размер 44-46 рост 164-170,14.12.2|14.12.30.130,ok|ambiguous|need_more,"real: женский халат, группа как у CL03",real,cl-07
+CL53,clothing,clean,Халат мужской рабочий размер 50-52 рост 176-182 рукав длинный,14.12,ok|ambiguous|need_more,"real: мужской рабочий халат, группа 14.12",real,cl-08
+CL54,clothing,clean,Халат для уборщиц размер 46-48 рост 158-164 рукав короткий,14.12.2|14.12.30.130,ok|ambiguous|need_more,"real: халат для уборщиц, группа как у CL03",real,cl-09
+CL55,clothing,clean,Футболка хлопок 100% черная размер 52-54 масса 190 г,14.14.3,ok|ambiguous|need_more,"real: футболка, группа 14.14.3",real,cl-10
+CL56,clothing,clean,Футболка хлопок 100% белая размер 44-46 масса 160 г,14.14.3,ok|ambiguous|need_more,"real: футболка, группа 14.14.3",real,cl-11
+CL57,clothing,clean,Футболка мужская хлопок 100% синяя размер 46-48 масса 170 г,14.14.3,ok|ambiguous|need_more,"real: мужская футболка, группа 14.14.3",real,cl-12
+CL58,clothing,clean,Ботинки рабочие мужские размер 42 верх натуральная кожа подошва полиуретан,15.20.3,ok|ambiguous|need_more,"real: рабочие ботинки, группа 15.20.3",real,cl-13
+CL59,clothing,clean,Ботинки рабочие утепленные размер 44 верх натуральная кожа подошва полиуретан,15.20.3,ok|ambiguous|need_more,"real: утепленные ботинки, группа 15.20.3",real,cl-14
+CL60,clothing,clean,Ботинки кожаные рабочие размер 41 литьевой метод крепления подошва полиуретан,15.20.3,ok|ambiguous|need_more,"real: кожаные ботинки, группа 15.20.3",real,cl-15
+FU46,furniture,clean,Стол письменный прямой столешница ЛДСП толщина 22 мм размер 1400х700х750 мм,31.01,ok|ambiguous|need_more,"real: прямой письменный стол, группа 31.01",real,fu-01
+FU47,furniture,clean,Стол офисный прямой письменный столешница ЛДСП высота 750 мм ширина 1400 мм глубина 700 мм,31.01,ok|ambiguous|need_more,"real: офисный прямой стол, группа 31.01",real,fu-02
+FU48,furniture,clean,Стол компьютерный ЛДСП ширина 1000 мм глубина 600 мм высота 750 мм,31.01,ok|ambiguous|need_more,"real: компьютерный стол, группа 31.01",real,fu-03
+FU49,furniture,clean,Стул офисный обивка кожа цвет черный высота 900 мм глубина 500 мм масса 6 кг,31.01,ok|ambiguous|need_more,"real: стул с кожаной обивкой, группа 31.01",real,fu-04
+FU50,furniture,clean,Стул посетителя обивка ткань цвет серый высота 800 мм глубина 480 мм,31.01,ok|ambiguous|need_more,"real: стул посетителя, группа 31.01",real,fu-05
+FU51,furniture,clean,Стул изо обивка ткань цвет синий высота 810 мм глубина 510 мм,31.01,ok|ambiguous|need_more,"real: стул ИЗО, группа 31.01",real,fu-06
+FU52,furniture,clean,Шкаф для одежды металлический высота 1800 мм ширина 800 мм глубина 500 мм,31.01,ok|ambiguous|need_more,"real: шкаф для одежды, группа 31.01",real,fu-07
+FU53,furniture,clean,Шкаф архивный металлический сварной высота 1900 мм ширина 900 мм глубина 450 мм,31.01,ok|ambiguous|need_more,"real: архивный шкаф, группа 31.01",real,fu-08
+FU54,furniture,clean,Шкаф для документов деревянный высота 800 мм ширина 400 мм глубина 380 мм,31.01,ok|ambiguous|need_more,"real: деревянный шкаф для документов, группа 31.01",real,fu-09
+FU55,furniture,clean,Кресло руководителя обивка кожа цвет черный высота 1200 мм ширина 700 мм глубина 600 мм,31.01,ok|ambiguous|need_more,"real: кресло руководителя, группа 31.01",real,fu-10
+FU56,furniture,clean,Кресло оператора обивка ткань цвет серый высота 1000 мм ширина 600 мм глубина 500 мм,31.01,ok|ambiguous|need_more,"real: кресло оператора, группа 31.01",real,fu-11
+FU57,furniture,clean,Кресло офисное сетка цвет черный высота 1100 мм ширина 620 мм глубина 500 мм,31.01,ok|ambiguous|need_more,"real: кресло с сеткой, группа 31.01",real,fu-12
+FU58,furniture,clean,Стеллаж металлический архивный высота 2200 мм ширина 1000 мм глубина 400 мм 5 полок,31.09.11.120,ok|ambiguous|need_more,"real: архивный стеллаж, группа 31.09.11.120",real,fu-13
+FU59,furniture,clean,Стеллаж для документов металлический высота 1800 мм ширина 700 мм глубина 300 мм 4 полки,31.09.11.120,ok|ambiguous|need_more,"real: стеллаж для документов, группа 31.09.11.120",real,fu-14
+FU60,furniture,clean,Стеллаж складской металлический высота 2500 мм ширина 1200 мм глубина 500 мм нагрузка на полку 150 кг,31.09.11.120,ok|ambiguous|need_more,"real: складской стеллаж, группа 31.09.11.120",real,fu-15
+TO46,tools,clean,Ключ гаечный рожковый 13х17 мм сталь длина 200 мм,25.73.3,ok|ambiguous|need_more,"real: рожковый ключ, группа 25.73.3",real,to-01
+TO47,tools,clean,Ключ гаечный комбинированный 19х22 мм длина 240 мм покрытие оксидное,25.73.3,ok|ambiguous|need_more,"real: комбинированный ключ, группа 25.73.3",real,to-02
+TO48,tools,clean,Ключ торцевой 10 мм длина 150 мм сталь,25.73.3,ok|ambiguous|need_more,"real: торцевой ключ, группа 25.73.3",real,to-03
+TO49,tools,clean,Плоскогубцы комбинированные длина 180 мм рукоятка диэлектрическая,25.73.3,ok|ambiguous|need_more,"real: плоскогубцы 180 мм, группа 25.73.3",real,to-04
+TO50,tools,clean,Плоскогубцы переставные длина 250 мм материал сталь,25.73.3,ok|ambiguous|need_more,"real: переставные плоскогубцы, группа 25.73.3",real,to-05
+TO51,tools,clean,Плоскогубцы утконосы длина 200 мм материал инструментальная сталь,25.73.3,ok|ambiguous|need_more,"real: утконосы, группа 25.73.3",real,to-06
+TO52,tools,clean,Дрель безударная мощность 500 Вт масса 1.8 кг,28.24.1,ok|ambiguous|need_more,"real: безударная дрель, группа 28.24.1",real,to-07
+TO53,tools,clean,Дрель ударная мощность 800 Вт диаметр сверления металл 13 мм масса 2.4 кг,28.24.1,ok|ambiguous|need_more,"real: ударная дрель 800 Вт, группа 28.24.1",real,to-08
+TO54,tools,clean,Дрель аккумуляторная напряжение 18 В масса 1.5 кг,28.24.1,ok|ambiguous|need_more,"real: аккумуляторная дрель, группа 28.24.1",real,to-09
+TO55,tools,clean,Отвертка аккумуляторная напряжение 4.8 В масса 500 г,28.24.1,ok|ambiguous|need_more,"real: аккумуляторная отвертка 4.8 В, группа 28.24.1",real,to-10
+TO56,tools,clean,Шуруповерт аккумуляторный напряжение 12 В масса 1.1 кг,28.24.1,ok|ambiguous|need_more,"real: шуруповерт 12 В, группа 28.24.1",real,to-11
+TO57,tools,clean,Отвертка аккумуляторная напряжение 3.6 В 2 скорости масса 400 г,28.24.1,ok|ambiguous|need_more,"real: аккумуляторная отвертка 3.6 В, две скорости, группа 28.24.1",real,to-12
+TO58,tools,clean,Молоток отбойный мощность 1200 Вт масса 10 кг,28.24.10.000,ok|ambiguous|need_more,"real: отбойный молоток 1200 Вт, группа 28.24.10.000",real,to-13
+TO59,tools,clean,Молоток отбойный электрический мощность 1700 Вт масса 18 кг,28.24.10.000,ok|ambiguous|need_more,"real: отбойный молоток 1700 Вт, группа 28.24.10.000",real,to-14
+TO60,tools,clean,Молоток отбойный мощность 900 Вт масса 8 кг,28.24.10.000,ok|ambiguous|need_more,"real: отбойный молоток 900 Вт, группа 28.24.10.000",real,to-15

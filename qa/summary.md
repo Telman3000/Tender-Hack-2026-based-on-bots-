@@ -1,3 +1,7 @@
+Основной путь — текущий разбор без модели.
+
+Полнота короткого списка дописывается командой `python qa/run_eval.py` и печатается как k/n отдельно по clothing, furniture и tools. Ниже сохранён базовый прогон 45 кейсов.
+
 # QA eval — origin/main bf6c60e + feature/core d8b6019 (fast-forward)
 
 Run: 2026-10-10 12:35 MSK. Fresh clone, README Windows steps: venv + pip 36 s, `build_index` 100 s, 3391 KTRU positions.

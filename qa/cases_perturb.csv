@@ -1,0 +1,46 @@
+﻿id,category,type,query,expected_code,expected_status,comment,set,group_id
+P-cl-01,clothing,typo,Ксотюм рабочий женский размер 44-46 рост 158-164 ткань смесовая,14.12,need_more|ambiguous|error,perturb:typo of CL46,perturb,cl-01
+P-cl-02,clothing,unit,Костюм рабочий мужской летний размер 56-58 рост 182-188 ткань хлопок масса 2 литра,14.12,need_more|ambiguous|error,perturb:unit of CL47,perturb,cl-02
+P-cl-03,clothing,missing,Брюки рабочие,14.12,need_more|ambiguous,perturb:missing of CL48,perturb,cl-03
+P-cl-04,clothing,contradiction,Куртка зимняя мужская удлиненная черная размер 52-54 рост 176-182 подкладка полиэстер размер 10-12,14.13,error|ambiguous|need_more,perturb:contradiction of CL49,perturb,cl-04
+P-cl-05,clothing,typo,Крутка рабочая демисезонная мужская размер 50-52 цвет синий,14.13,need_more|ambiguous|error,perturb:typo of CL50,perturb,cl-05
+P-cl-06,clothing,unit,Куртка утепленная женская размер 44-46 рост 164-170 подкладка полиэстер масса 2 литра,14.13,need_more|ambiguous|error,perturb:unit of CL51,perturb,cl-06
+P-cl-07,clothing,missing,Халат женский,14.12.2|14.12.30.130,need_more|ambiguous,perturb:missing of CL52,perturb,cl-07
+P-cl-08,clothing,contradiction,Халат мужской рабочий размер 50-52 рост 176-182 рукав длинный размер 10-12,14.12,error|ambiguous|need_more,perturb:contradiction of CL53,perturb,cl-08
+P-cl-09,clothing,typo,Хлаат для уборщиц размер 46-48 рост 158-164 рукав короткий,14.12.2|14.12.30.130,need_more|ambiguous|error,perturb:typo of CL54,perturb,cl-09
+P-cl-10,clothing,unit,Футболка хлопок 100% черная размер 52-54 масса 190 л,14.14.3,need_more|ambiguous|error,perturb:unit of CL55,perturb,cl-10
+P-cl-11,clothing,missing,Футболка хлопок,14.14.3,need_more|ambiguous,perturb:missing of CL56,perturb,cl-11
+P-cl-12,clothing,contradiction,Футболка мужская хлопок 100% синяя размер 46-48 масса 170 г размер 10-12,14.14.3,error|ambiguous|need_more,perturb:contradiction of CL57,perturb,cl-12
+P-cl-13,clothing,typo,Бтоинки рабочие мужские размер 42 верх натуральная кожа подошва полиуретан,15.20.3,need_more|ambiguous|error,perturb:typo of CL58,perturb,cl-13
+P-cl-14,clothing,unit,Ботинки рабочие утепленные размер 44 верх натуральная кожа подошва полиуретан масса 2 литра,15.20.3,need_more|ambiguous|error,perturb:unit of CL59,perturb,cl-14
+P-cl-15,clothing,missing,Ботинки кожаные,15.20.3,need_more|ambiguous,perturb:missing of CL60,perturb,cl-15
+P-fu-01,furniture,contradiction,Стол письменный прямой столешница ЛДСП толщина 22 мм размер 1400х700х750 мм размер 10-12,31.01,error|ambiguous|need_more,perturb:contradiction of FU46,perturb,fu-01
+P-fu-02,furniture,typo,Сотл офисный прямой письменный столешница ЛДСП высота 750 мм ширина 1400 мм глубина 700 мм,31.01,need_more|ambiguous|error,perturb:typo of FU47,perturb,fu-02
+P-fu-03,furniture,unit,Стол компьютерный ЛДСП ширина 1000 кг глубина 600 мм высота 750 мм,31.01,need_more|ambiguous|error,perturb:unit of FU48,perturb,fu-03
+P-fu-04,furniture,missing,Стул офисный,31.01,need_more|ambiguous,perturb:missing of FU49,perturb,fu-04
+P-fu-05,furniture,contradiction,Стул посетителя обивка ткань цвет серый высота 800 мм глубина 480 мм высота 50 мм,31.01,error|ambiguous|need_more,perturb:contradiction of FU50,perturb,fu-05
+P-fu-06,furniture,typo,Сутл изо обивка ткань цвет синий высота 810 мм глубина 510 мм,31.01,need_more|ambiguous|error,perturb:typo of FU51,perturb,fu-06
+P-fu-07,furniture,unit,Шкаф для одежды металлический высота 1800 кг ширина 800 мм глубина 500 мм,31.01,need_more|ambiguous|error,perturb:unit of FU52,perturb,fu-07
+P-fu-08,furniture,missing,Шкаф архивный,31.01,need_more|ambiguous,perturb:missing of FU53,perturb,fu-08
+P-fu-09,furniture,contradiction,Шкаф для документов деревянный высота 800 мм ширина 400 мм глубина 380 мм высота 50 мм,31.01,error|ambiguous|need_more,perturb:contradiction of FU54,perturb,fu-09
+P-fu-10,furniture,typo,Керсло руководителя обивка кожа цвет черный высота 1200 мм ширина 700 мм глубина 600 мм,31.01,need_more|ambiguous|error,perturb:typo of FU55,perturb,fu-10
+P-fu-11,furniture,unit,Кресло оператора обивка ткань цвет серый высота 1000 кг ширина 600 мм глубина 500 мм,31.01,need_more|ambiguous|error,perturb:unit of FU56,perturb,fu-11
+P-fu-12,furniture,missing,Кресло офисное,31.01,need_more|ambiguous,perturb:missing of FU57,perturb,fu-12
+P-fu-13,furniture,contradiction,Стеллаж металлический архивный высота 2200 мм ширина 1000 мм глубина 400 мм 5 полок высота 50 мм,31.09.11.120,error|ambiguous|need_more,perturb:contradiction of FU58,perturb,fu-13
+P-fu-14,furniture,typo,Сетллаж для документов металлический высота 1800 мм ширина 700 мм глубина 300 мм 4 полки,31.09.11.120,need_more|ambiguous|error,perturb:typo of FU59,perturb,fu-14
+P-fu-15,furniture,unit,Стеллаж складской металлический высота 2500 кг ширина 1200 мм глубина 500 мм нагрузка на полку 150 кг,31.09.11.120,need_more|ambiguous|error,perturb:unit of FU60,perturb,fu-15
+P-to-01,tools,missing,Ключ гаечный,25.73.3,need_more|ambiguous,perturb:missing of TO46,perturb,to-01
+P-to-02,tools,contradiction,Ключ гаечный комбинированный 19х22 мм длина 240 мм покрытие оксидное длина 10 мм,25.73.3,error|ambiguous|need_more,perturb:contradiction of TO47,perturb,to-02
+P-to-03,tools,typo,Кюлч торцевой 10 мм длина 150 мм сталь,25.73.3,need_more|ambiguous|error,perturb:typo of TO48,perturb,to-03
+P-to-04,tools,unit,Плоскогубцы комбинированные длина 180 кг рукоятка диэлектрическая,25.73.3,need_more|ambiguous|error,perturb:unit of TO49,perturb,to-04
+P-to-05,tools,missing,Плоскогубцы переставные,25.73.3,need_more|ambiguous,perturb:missing of TO50,perturb,to-05
+P-to-06,tools,contradiction,Плоскогубцы утконосы длина 200 мм материал инструментальная сталь длина 10 мм,25.73.3,error|ambiguous|need_more,perturb:contradiction of TO51,perturb,to-06
+P-to-07,tools,typo,Дерль безударная мощность 500 Вт масса 1.8 кг,28.24.1,need_more|ambiguous|error,perturb:typo of TO52,perturb,to-07
+P-to-08,tools,unit,Дрель ударная мощность 800 Вт диаметр сверления металл 13 кг масса 2.4 кг,28.24.1,need_more|ambiguous|error,perturb:unit of TO53,perturb,to-08
+P-to-09,tools,missing,Дрель аккумуляторная,28.24.1,need_more|ambiguous,perturb:missing of TO54,perturb,to-09
+P-to-10,tools,contradiction,Отвертка аккумуляторная напряжение 4.8 В масса 500 г цвет черный цвет белый,28.24.1,error|ambiguous|need_more,perturb:contradiction of TO55,perturb,to-10
+P-to-11,tools,typo,Шрууповерт аккумуляторный напряжение 12 В масса 1.1 кг,28.24.1,need_more|ambiguous|error,perturb:typo of TO56,perturb,to-11
+P-to-12,tools,unit,Отвертка аккумуляторная напряжение 3.6 В 2 скорости масса 400 л,28.24.1,need_more|ambiguous|error,perturb:unit of TO57,perturb,to-12
+P-to-13,tools,missing,Молоток отбойный,28.24.10.000,need_more|ambiguous,perturb:missing of TO58,perturb,to-13
+P-to-14,tools,contradiction,Молоток отбойный электрический мощность 1700 Вт масса 18 кг мощность 10 Вт,28.24.10.000,error|ambiguous|need_more,perturb:contradiction of TO59,perturb,to-14
+P-to-15,tools,typo,Млооток отбойный мощность 900 Вт масса 8 кг,28.24.10.000,need_more|ambiguous|error,perturb:typo of TO60,perturb,to-15
