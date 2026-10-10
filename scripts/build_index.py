@@ -181,6 +181,15 @@ def _local(tag: str) -> str:
 
 
 SKIP_STATUSES = {"INACTIVE", "TERMINATED", "EXCLUDED", "DELETED", "CANCELLED"}
+STATS = {"older_versions_skipped": 0, "replaced_by_newer": 0, "not_actual_files_skipped": 0}
+
+
+def is_actual_file(name: str) -> bool:
+    """Only «all_actual» exports; «all_not-actual» / «all_not_actual» never reach the ktru table."""
+    low = name.lower()
+    if "not-actual" in low or "not_actual" in low or "notactual" in low:
+        return False
+    return "all_actual" in low or "all-actual" in low
 
 
 def _num(text: str | None) -> float | None:
@@ -275,6 +284,8 @@ def parse_ktru_xml_bytes(data: bytes, conn, max_insert: int | None = None) -> in
             continue
 
         code = name = okpd2 = okei = status = None
+        version = 0
+        updated = ""
         required = []
         chars = []
         char_values: list[dict] = []
@@ -287,6 +298,13 @@ def parse_ktru_xml_bytes(data: bytes, conn, max_insert: int | None = None) -> in
                 name = (child.text or "").strip()
             elif loc == "status":
                 status = (child.text or "").strip()
+            elif loc == "version":
+                try:
+                    version = int((child.text or "0").strip())
+                except ValueError:
+                    version = 0
+            elif loc in ("updateDate", "publishDate") and child.text and (loc == "updateDate" or not updated):
+                updated = child.text.strip()
             elif loc == "OKPD2":
                 for sub in child:
                     if _local(sub.tag) == "code":
@@ -319,15 +337,24 @@ def parse_ktru_xml_bytes(data: bytes, conn, max_insert: int | None = None) -> in
         if not domain:
             elem.clear()
             continue
+        # several versions of one position: keep only the newest (version, then update date)
+        prev = conn.execute("SELECT version, update_date FROM ktru WHERE code=?", (code,)).fetchone()
+        if prev is not None and (prev["version"] or 0, prev["update_date"] or "") >= (version, updated):
+            STATS["older_versions_skipped"] += 1
+            elem.clear()
+            continue
+        if prev is not None:
+            STATS["replaced_by_newer"] += 1
 
         conn.execute(
             """
-            INSERT INTO ktru(code, name, okpd2, domain, okei, required_json, chars_json, name_norm)
-            VALUES(?,?,?,?,?,?,?,?)
+            INSERT INTO ktru(code, name, okpd2, domain, okei, required_json, chars_json, name_norm,
+                             version, update_date)
+            VALUES(?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(code) DO UPDATE SET
               name=excluded.name, okpd2=excluded.okpd2, domain=excluded.domain,
               required_json=excluded.required_json, chars_json=excluded.chars_json,
-              name_norm=excluded.name_norm
+              name_norm=excluded.name_norm, version=excluded.version, update_date=excluded.update_date
             """,
             (
                 code,
@@ -338,6 +365,8 @@ def parse_ktru_xml_bytes(data: bytes, conn, max_insert: int | None = None) -> in
                 json.dumps(required, ensure_ascii=False),
                 json.dumps(chars, ensure_ascii=False),
                 _norm(name),
+                version,
+                updated,
             ),
         )
         conn.execute("DELETE FROM ktru_char_values WHERE code=?", (code,))
@@ -388,11 +417,8 @@ def ingest_ktru(conn, outer_zip: Path, max_files: int = 40) -> int:
             raw = z.read(inner_name)
             with zipfile.ZipFile(io.BytesIO(raw)) as z2:
                 xmls = z2.namelist()
-                actuals = [
-                    x
-                    for x in xmls
-                    if "all_actual" in x.lower() or "all-actual" in x.lower()
-                ]
+                actuals = [x for x in xmls if is_actual_file(x)]
+                STATS["not_actual_files_skipped"] += sum(1 for x in xmls if x.endswith(".xml") and not is_actual_file(x))
                 if not actuals:
                     continue
                 n = 0
@@ -403,6 +429,42 @@ def ingest_ktru(conn, outer_zip: Path, max_files: int = 40) -> int:
                 processed += 1
                 print(f"    +{n} positions (total {total})")
     return total
+
+
+def _signature(conn, code: str) -> tuple:
+    rows = conn.execute(
+        "SELECT char_name, required, kind, value, vmin, vmax, min_op, max_op, unit FROM ktru_char_values "
+        "WHERE code=?", (code,)).fetchall()
+    return tuple(sorted(tuple("" if x is None else str(x) for x in r) for r in rows))
+
+
+def dedupe_identical(conn, dry_run: bool = False) -> int:
+    """Positions with the same name, OKPD2 and identical characteristics (values, ranges, units) are one
+    position published several times: keep only the newest (version, update date, then code)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ktru)")}
+    has_ver = "version" in cols
+    q = ("SELECT code, name, okpd2, version, update_date FROM ktru" if has_ver
+         else "SELECT code, name, okpd2, 0 AS version, '' AS update_date FROM ktru")
+    groups: dict[tuple, list] = {}
+    for r in conn.execute(q).fetchall():
+        groups.setdefault((r["name"], r["okpd2"]), []).append(r)
+    drop: list[str] = []
+    for rows in groups.values():
+        if len(rows) < 2:
+            continue
+        by_sig: dict[tuple, list] = {}
+        for r in rows:
+            by_sig.setdefault(_signature(conn, r["code"]), []).append(r)
+        for same in by_sig.values():
+            if len(same) > 1:
+                same.sort(key=lambda r: (r["version"] or 0, r["update_date"] or "", r["code"]), reverse=True)
+                drop += [r["code"] for r in same[1:]]
+    if not dry_run and drop:
+        conn.executemany("DELETE FROM ktru WHERE code=?", [(c,) for c in drop])
+        conn.executemany("DELETE FROM ktru_char_values WHERE code=?", [(c,) for c in drop])
+        conn.commit()
+    STATS["identical_duplicates_removed"] = len(drop)
+    return len(drop)
 
 
 def seed_ktru_from_portal_if_empty(conn) -> int:
@@ -490,6 +552,7 @@ def main() -> None:
         outer = find_ktru_outer_zip(materials)
         if outer:
             ktru_n = ingest_ktru(conn, outer, max_files=args.ktru_files or 10**9)
+            print(f"[ktru] identical duplicates removed: {dedupe_identical(conn)}")
         else:
             print("WARNING: KTRU zip not found")
     seed_ktru_from_portal_if_empty(conn)
@@ -502,6 +565,7 @@ def main() -> None:
             d: conn.execute("SELECT COUNT(*) c FROM ktru WHERE domain=?", (d,)).fetchone()["c"]
             for d in ("furniture", "clothing", "tools")
         },
+        **STATS,
     }
     set_meta(conn, "stats", stats)
     conn.close()
