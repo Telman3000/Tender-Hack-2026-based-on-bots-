@@ -15,6 +15,19 @@ def match(code, exp):
     return bool(code) and any(code.startswith(e) for e in exp.split("|"))
 
 
+def status_ok(c, st, top):
+    """Status must be allowed for the case AND consistent with the code:
+    clean+ok needs a correct top-1; clean+ambiguous/need_more needs the group in top-3."""
+    exp = c["expected_code"]
+    if st not in c["expected_status"].split("|"):
+        return 0
+    if c["type"] == "clean":
+        if st == "ok":
+            return int(match(top[0] if top else "", exp))
+        return int(any(match(x, exp) for x in top[:3]))
+    return 1
+
+
 def group(exp):  # KTRU group = first two OKPD2 levels, e.g. 31.01
     return "|".join(".".join(e.split(".")[:2]) for e in exp.split("|"))
 
@@ -23,7 +36,7 @@ def pct(xs):
     return f"{100*sum(xs)/len(xs):.0f}%" if xs else "-"
 
 
-def main(hint=True):
+def main(hint=True, suffix=""):
     cases = list(csv.DictReader((QA / "cases.csv").open(encoding="utf-8-sig")))
     eng = CatalogEngine()
     eng.analyze(AnalyzeRequest(text="стол"))  # warmup
@@ -50,13 +63,14 @@ def main(hint=True):
             "top1_ok": int(match(top[0] if top else "", exp)),
             "top3_ok": int(any(match(x, exp) for x in top[:3])),
             "group_ok": int(any(match(x, group(exp)) for x in top[:3])),
-            "status_ok": int(st in c["expected_status"].split("|") and not (c["type"] == "clean" and st != "ok" and not any(match(x, exp) for x in top[:3]))),
+            "status_ok": status_ok(c, st, top),
+            "confident_wrong": int(st == "ok" and not match(top[0] if top else "", exp)),
             "false_confident": int(c["type"] == "error" and st == "ok"),
             "n_chars": len(r.characteristics) if r else 0,
             "issues": "; ".join(f"{i.kind}:{i.message}" for i in r.issues)[:300] if r else err,
             "latency_ms": round(ms, 1)})
     eng.close()
-    with (QA / "results.csv").open("w", newline="", encoding="utf-8-sig") as f:
+    with (QA / f"results{suffix}.csv").open("w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
 
     def block(rs):
@@ -64,9 +78,9 @@ def main(hint=True):
         err = [r["false_confident"] for r in rs if r["type"] == "error"]
         p95 = lat[min(len(lat) - 1, int(round(0.95 * (len(lat) - 1))))]
         return [str(len(rs)), pct([r["top1_ok"] for r in rs]), pct([r["top3_ok"] for r in rs]),
-                pct([r["group_ok"] for r in rs]), pct([r["status_ok"] for r in rs]), pct(err),
+                pct([r["group_ok"] for r in rs]), pct([r["status_ok"] for r in rs]), pct(err), pct([r["confident_wrong"] for r in rs]),
                 f"{statistics.median(lat):.0f}", f"{p95:.0f}", f"{lat[-1]:.0f}"]
-    hdr = "| slice | n | top-1 | top-3 | group | status | false-confident (err) | p50 ms | p95 ms | max ms |\n|---|---|---|---|---|---|---|---|---|---|\n"
+    hdr = "| slice | n | top-1 | top-3 | group | status | false-confident (err) | ok-but-wrong-code | p50 ms | p95 ms | max ms |\n|---|---|---|---|---|---|---|---|---|---|---|\n"
     lines = [f"| ALL | " + " | ".join(block(rows)) + " |"]
     for key in ("category", "type"):
         g = defaultdict(list)
@@ -80,14 +94,16 @@ def main(hint=True):
     fails = [r for r in rows if not (r["top3_ok"] and r["status_ok"])]
     md = [f"# QA eval — {br}@{rev}, {time.strftime('%Y-%m-%d %H:%M')}", "",
           f"Cases: {len(rows)}; domain_hint={'on' if hint else 'off'}. Status accepted sets per case are in cases.csv "
-          "(clean: ok, or ambiguous only if the expected group is in top-3; incomplete: need_more|ambiguous; error: anything except ok).", "",
+          "(clean: ok counts only with correct top-1; ambiguous/need_more only if expected group is in top-3; incomplete: need_more|ambiguous; error: anything except ok).", "",
           hdr + "\n".join(lines), "", "## Failures (top-3 miss or wrong status)", "",
           "| id | type | query | expected | got top3 | status | domain |", "|---|---|---|---|---|---|---|"]
     md += [f"| {r['id']} | {r['type']} | {r['query']} | {r['expected_code']} / {r['expected_status']} | {r['top3']} | {r['status']} | {r['domain']} |" for r in fails]
-    (QA / "summary.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    (QA / f"summary{suffix}.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     print("\n".join(lines))
 
 
 if __name__ == "__main__":
-    main(hint="--no-hint" not in sys.argv)
+    sfx = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--suffix=")), "")
+    main(hint="--no-hint" not in sys.argv, suffix=sfx)
+
 
