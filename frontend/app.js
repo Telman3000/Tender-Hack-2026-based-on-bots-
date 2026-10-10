@@ -39,6 +39,7 @@ function normChar(c) {
     allowed: Array.isArray(allowed) && allowed.length ? allowed.map(String) : null,
     min: c.min ?? (c.range ? c.range.min : undefined) ?? undefined,
     max: c.max ?? (c.range ? c.range.max : undefined) ?? undefined,
+    suspicious: !!c.suspicious,
   };
 }
 function normIssue(i) {
@@ -253,7 +254,8 @@ function drawHighlight() {
 /* ---------- порядок: КТРУ -> Портал -> Новая (стабильно внутри группы) ---------- */
 const SOURCE_RANK = { ktru: 0, portal: 1, new: 2 };
 function sortBySource(list) {
-  return list.map((c, i) => [c, i]).sort((a, b) => (SOURCE_RANK[a[0].source] - SOURCE_RANK[b[0].source]) || (a[1] - b[1])).map((x) => x[0]);
+  // подозрительные (не подходят к типу товара) — всегда в конце
+  return list.map((c, i) => [c, i]).sort((a, b) => ((a[0].suspicious ? 1 : 0) - (b[0].suspicious ? 1 : 0)) || (SOURCE_RANK[a[0].source] - SOURCE_RANK[b[0].source]) || (a[1] - b[1])).map((x) => x[0]);
 }
 
 /* ---------- «Допишите ещё n характеристик» ---------- */
@@ -262,10 +264,20 @@ function fillBlock(data, issues) {
   const comp = completenessOf(data);
   const total = (comp.required_total || 0) + (comp.optional_total || 0);
   const filled = (comp.required_filled || 0) + (comp.optional_filled || 0);
-  const empty = state.chars.map((c, i) => ({ c, i })).filter((x) => x.c.name.trim() && !isFilled(x.c));
+  let empty = state.chars.map((c, i) => ({ c, i })).filter((x) => x.c.name.trim() && !isFilled(x.c) && !x.c.suspicious);
+  // новое ядро: явный список незаполненных (с allowed/min/max/unit) — источник истины для блока
+  if (Array.isArray(data.missing_characteristics)) {
+    empty = data.missing_characteristics.filter((m) => m && m.name).map((m) => {
+      const i = state.chars.findIndex((c) => norm(c.name) === norm(m.name));
+      if (i >= 0 && isFilled(state.chars[i])) return null; // уже заполнено правкой в таблице
+      const base = i >= 0 ? state.chars[i] : {};
+      return { c: normChar({ source: "ktru", ...base, ...m, required: m.required ?? base.required, value: "" }), i };
+    }).filter(Boolean);
+  }
   // обязательные из issues(missing), которых нет в таблице
   const extra = issues.filter((x) => x.type === "missing" && x.field && !state.chars.some((c) => norm(c.name) === norm(x.field)))
-    .map((x) => ({ c: normChar({ name: x.field, value: "", source: "ktru", required: true }), i: -1 }));
+    .map((x) => ({ c: normChar({ name: x.field, value: "", source: "ktru", required: true }), i: -1 }))
+    .filter((x) => !empty.some((e) => norm(e.c.name) === norm(x.c.name)));
   const items = [...empty, ...extra];
   const ordered = [...items.filter((x) => x.c.required), ...items.filter((x) => !x.c.required)];
   if (!ordered.length || !data.best_ktru) return "";
@@ -285,8 +297,17 @@ function fillBlock(data, issues) {
     return `<div class="fill-item ${c.required ? "req" : "opt"}"><span class="fname">${escapeHtml(c.name)}</span>${c.required ? '<span class="req-tag">обязательная</span>' : ' <span class="muted">необязательная</span>'} ${badge(c.source)}${ctl}</div>`;
   };
   return `<div class="block fill" id="fillBlock"><div class="fill-head"><h2>Допишите ещё ${ordered.length} ${plural(ordered.length, "характеристику", "характеристики", "характеристик")}${nReq ? ` <span class="muted">(обязательных: ${nReq})</span>` : ""}</h2>
-    <span class="counter" id="fillCounter">${filled} из ${total}</span></div>
+    <span class="counter" id="fillCounter">${escapeHtml(fillText(data, filled, total))}</span></div>
     <div class="progress"><i style="width:${pct}%"></i></div>${ordered.map(row).join("")}</div>`;
+}
+function fillText(data, filled, total) {
+  const f = data.fill;
+  if (typeof f === "string" && f.trim()) return f.trim();
+  if (f && typeof f === "object") {
+    if (typeof f.text === "string" && f.text.trim()) return f.text.trim();
+    if (f.total != null) return `Заполнено ${f.filled ?? 0} из ${f.total}`;
+  }
+  return `${filled} из ${total}`;
 }
 function plural(n, one, few, many) {
   const m10 = n % 10, m100 = n % 100;
@@ -327,9 +348,10 @@ function charsTable(issues) {
     .map((c, i) => {
       const iss = rowIssue(c);
       const emptyReq = c.required && !String(c.value ?? "").trim();
-      const cls = iss ? (iss.severity === "error" ? "err" : "warn") : emptyReq ? "warn" : "";
+      const cls = (iss ? (iss.severity === "error" ? "err" : "warn") : emptyReq || c.suspicious ? "warn" : "") + (c.suspicious ? " susp" : "");
       return `<tr class="${cls}">
         <td><input data-i="${i}" data-k="name" value="${escapeHtml(c.name)}" placeholder="Название" />
+          ${c.suspicious ? `<span class="tag-susp" title="${escapeHtml(iss ? iss.message : "Характеристика не подходит к типу товара")}">подозрительно</span>` : ""}
           ${c.required ? `<div class="hint">обязательная${String(c.value ?? "").trim() ? "" : " · заполните"}</div>` : ""}</td>
         <td class="muted">${escapeHtml(c.user_input)}</td>
         <td>${valueEditor(c, i)}${iss && iss.expected ? `<div class="hint">ожидается: ${escapeHtml(iss.expected)}</div>` : ""}</td>
@@ -423,6 +445,8 @@ function draw() {
   const candidates = getCandidates(data, steps);
   $("status").className = `status ${data.status || "idle"}`;
   $("status").textContent = statusLabel(data.status);
+  const oos = isOutOfScope(data);
+  if (oos) { $("status").className = "status error oos"; $("status").textContent = "Не наша категория"; }
 
   const best = data.best_ktru
     ? `<div class="block product-card" id="productCard"><div class="pc-head"><div class="pc-img">▦</div><div style="flex:1">
@@ -437,6 +461,7 @@ function draw() {
 
   $("result").className = "result";
   $("result").innerHTML = `
+    ${oos ? `<div class="block oos-block" id="oosBlock"><span class="sbadge bad">Не наша категория</span> ${escapeHtml(String(data.message || "").replace(/^\s*не наша категория\s*[:.—-]?\s*/i, "") || "Товар не относится к поддерживаемым категориям (мебель, одежда, инструменты). Код КТРУ не подбирается.")}</div>` : ""}
     ${statusBadges(data, issues)}
     <div class="block"><h2>Распознано${elapsed}</h2>
       <div class="muted">Категория: <b>${escapeHtml(data.detected_domain || "—")}</b> · Товар: <b>${escapeHtml(data.product_guess || "—")}</b></div></div>
@@ -634,7 +659,7 @@ document.querySelectorAll(".nav .tab").forEach((b) => b.addEventListener("click"
 
 /* ---------- пакетная проверка CSV ---------- */
 const BATCH_CONCURRENCY = 4;
-const batch = { items: [], results: [], mode: null, t0: 0, total_ms: 0, running: false };
+const batch = { items: [], results: [], mode: null, t0: 0, total_ms: 0, running: false, serverSummary: null };
 function decodeCsv(buf) {
   const u8 = new Uint8Array(buf);
   try { return new TextDecoder("utf-8", { fatal: true }).decode(u8).replace(/^\uFEFF/, ""); }
@@ -763,7 +788,7 @@ async function runBatch(names) {
   if (batch.running) return;
   batch.running = true;
   batch.items = names.map((text, i) => ({ id: String(i + 1), text }));
-  batch.results = new Array(names.length).fill(null);
+  batch.results = new Array(names.length).fill(null); batch.serverSummary = null;
   $("exportCsv").disabled = true;
   $("batchBody").innerHTML = batch.items.map((it, i) => `<tr data-row="${i}"><td class="num">${i + 1}</td><td>${escapeHtml(it.text)}</td><td colspan="7" class="muted">ожидает…</td></tr>`).join("");
   drawSummary(false);
@@ -786,7 +811,7 @@ async function runBatch(names) {
       if (res.ok && res.body && res.body.getReader) {
         const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "", k = 0, any = false;
         const line = (l) => { l = l.trim(); if (!l) return; let o; try { o = JSON.parse(l); } catch (_) { return; }
-          if (o.summary && !o.result && o.id == null && !o.characteristics) return; any = true; put(o, k++); };
+          if ((o.type === "summary" || o.summary) && !o.result && o.id == null && !o.characteristics) { batch.serverSummary = o.summary || o; return; } any = true; put(o, k++); };
         for (;;) { const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true });
           let nl; while ((nl = buf.indexOf("\n")) >= 0) { line(buf.slice(0, nl)); buf = buf.slice(nl + 1); } }
         line(buf);
@@ -801,7 +826,7 @@ async function runBatch(names) {
     if (!ok) {
       try {
         const res = await fetch("/api/analyze/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload });
-        if (res.ok) { const body = await res.json(); if (Array.isArray(body.results)) { body.results.forEach(put); ok = true; batch.mode = "batch"; } }
+        if (res.ok) { const body = await res.json(); if (Array.isArray(body.results)) { batch.serverSummary = body.summary || null; body.results.forEach(put); ok = true; batch.mode = "batch"; } }
       } catch (_) { ok = false; }
     }
   }
