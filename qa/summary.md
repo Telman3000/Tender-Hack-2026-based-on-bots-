@@ -201,3 +201,20 @@ Bugs:
    which core does not have, then falls back to per-row calls (4 parallel). Works, but a jury opening DevTools sees red errors.
 2. Narrow width 420 px: page scrolls horizontally (scrollWidth 474 on the single view, 992 on the batch tab because of the wide table). Fine at 1280.
 3. A description containing «;» in a file that uses «;» is cut at the first «;» unless quoted (by design: only the first column is read).
+
+
+# Acceptance feature/ui c3cddec (+0d97c90) on main af74a6b — 2026-10-10 20:31 MSK
+
+Fast-forward, no conflicts. No app/ changes (main af74a6b vs 7aa9939: frontend, docs, qa only; ui: frontend, docs, frontend/tests). Index not rebuilt (core unchanged).
+pytest 62; dev 44/45 · 45/45 · 45/45; holdout 43/45 · 44/45 · 43/45; break 28/32 (same 4 core FAILs: B01/B02, B16, B27); API batch 100 rows 6.6 s sequential / 3.8 s 4-parallel.
+Fixes verified (headless Edge, port 8816):
+- Batch: no HTTP >= 400 and no console errors (one quiet GET /openapi.json, falls back to per-row /api/analyze).
+- 420 px: scrollWidth = 420 on both tabs (was 474 / 992); 1280 unchanged.
+- CSV: unquoted «;» or «,» inside a one-column file is kept as the whole description; header «Наименование;Количество» / «name,qty»
+  picks the name column; quoted «,» inside a field is kept.
+Regression: ui_accept PASS, MANUAL_CHECK 6/6 + pytest, ui_batch: demo_batch 11 rows 0.6 s, batch100 (utf-8 ;) 4.3 s, cp1251 «,» 4.5 s, 100/100 rows equal
+to single /api/analyze, export ok, XSS escaped, no JS errors.
+New demo_script.md walked literally: all codes, funnels, badges, counters, highlight, chip «B», batch summary (8/2/1, 4/6/1) match. Mismatches:
+- (a) line 24: «Было → стало … ткань → Текстиль» is not shown for FU19 on main (no correction is reported).
+- (b) line 39: block text is «27 м → 27000 мм», not «длина 27 м → 27000 мм».
+presentation_final.pptx: every number matches qa/metrics_slide.md and the batch run. Nit: slide 3 «Ответ < 0,1 с» — true for the median, p95 is 0.1–0.2 s.
