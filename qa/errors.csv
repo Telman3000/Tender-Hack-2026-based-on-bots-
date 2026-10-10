@@ -1,0 +1,31 @@
+﻿id,category,error_type,query,expected_issue_types,comment
+E01,furniture,unit,Стол письменный ЛДСП высота 750 кг ширина 1200 мм,unit|mismatch|out_of_range,height in kg
+E02,furniture,unit,Шкаф для одежды металлический высота 1800 литров,unit|mismatch|out_of_range,height in liters
+E03,furniture,unit,Кресло офисное высота 1080 Вт обивка ткань,unit|mismatch|out_of_range,height in W
+E04,furniture,unit,Тумба прикроватная масса 12 мм,unit|mismatch|out_of_range,mass in mm
+E05,clothing,unit,Футболка трикотажная хлопок масса 180 метров размер 48,unit|mismatch|out_of_range,mass in m
+E06,tools,unit,Шуруповерт сетевой мощность 280 кг,unit|mismatch|out_of_range,power in kg
+E07,tools,unit,Молоток слесарный масса 500 вольт,unit|mismatch|out_of_range,mass in V
+E08,tools,unit,Дрель ручная электрическая мощность 650 мм,unit|mismatch|out_of_range,power in mm
+E09,furniture,unrealistic,Стол письменный ЛДСП высота 9500 мм,mismatch|out_of_range|unit,9.5 m desk
+E10,furniture,unrealistic,Кресло офисное высота 30 м обивка ткань,mismatch|out_of_range|unit,30 m chair
+E11,furniture,unrealistic,Шкаф архивный металлический ширина 0.5 мм,mismatch|out_of_range|unit,0.5 mm wide
+E12,clothing,unrealistic,Футболка трикотажная хлопок 250% размер 48,mismatch|out_of_range|unit,250% cotton
+E13,tools,unrealistic,Ключ гаечный разводной длина 15 м,mismatch|out_of_range|unit,15 m wrench
+E14,tools,unrealistic,Шуруповерт аккумуляторный напряжение 5000 В,mismatch|out_of_range|unit,5 kV
+E15,tools,unrealistic,Молоток масса 900 кг,mismatch|out_of_range|unit,900 kg hammer
+E16,tools,unrealistic,Дрель ручная электрическая мощность 90000 Вт,mismatch|out_of_range|unit,90 kW drill
+E17,furniture,nonexistent,Кресло офисное вид материала обивки спинки бетон,not_allowed,not in allowed list
+E18,furniture,nonexistent,Стол письменный вид материала столешницы стекловата,not_allowed,not in allowed list
+E19,furniture,nonexistent,Стол письменный конфигурация стола круглая спираль,not_allowed,not in allowed list
+E20,furniture,nonexistent,Кресло офисное вид материала обивки сиденья картон,not_allowed,not in allowed list
+E21,tools,nonexistent,Ключ гаечный разводной тип исполнения Z,not_allowed,not in allowed list
+E22,tools,nonexistent,Шуруповерт тип питания солнечный парус,not_allowed,not in allowed list
+E23,tools,nonexistent,Молоток тип ювелирно-космический,not_allowed,not in allowed list
+E24,furniture,typo,Стол писменный ЛДСП высота 750 мм,typo,писменный
+E25,furniture,typo,Крело офисное обивка ткань,typo,Крело
+E26,furniture,typo,Шкав для одежды металлический,typo,Шкав
+E27,clothing,typo,Футбалка трикотажная хлопок размер 48,typo,Футбалка
+E28,clothing,typo,Халат производственый женский размер 48,typo,производственый
+E29,tools,typo,Шуруповерд аккумуляторный 12 В,typo,Шуруповерд
+E30,tools,typo,Малоток слесарный 500 г,typo,Малоток
