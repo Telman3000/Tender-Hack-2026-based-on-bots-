@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CharSource(str, Enum):
@@ -91,7 +91,14 @@ class InputCharacteristic(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     text: str = Field(..., min_length=1, description="Свободное описание товара")
-    domain_hint: str | None = Field(default=None, description="furniture | clothing | tools | null")
+    domain_hint: Literal["furniture", "clothing", "tools"] | None = Field(
+        default=None, description="furniture | clothing | tools | null"
+    )
+
+    @field_validator("domain_hint", mode="before")
+    @classmethod
+    def _empty_hint(cls, v: Any) -> Any:
+        return None if v in ("", None) else v
     characteristics: list[InputCharacteristic] | None = Field(
         default=None, description="Явно заданные характеристики — перекрывают распознанные из текста"
     )

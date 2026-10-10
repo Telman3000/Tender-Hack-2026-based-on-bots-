@@ -177,6 +177,7 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -
             "unit", field=name, value=f"{value} {u}", expected=exp,
             message=f"«{name}» не может измеряться в «{u}»",
             suggestions=[f"{value} {x}" for x in _DIM_HINT.get(exp, [])], severity="error"))
+        return out
     if u == "%" and not 0 <= num <= 100:
         out.append(Issue.make(
             "mismatch", field=name, value=f"{value} %", expected="0–100 %",
@@ -184,6 +185,13 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -
     if num <= 0 and any(k in low for k in ("высот", "ширин", "глубин", "длин", "масс", "вес", "мощност")):
         out.append(Issue.make("mismatch", field=name, value=value, expected="> 0",
                               message=f"«{name}» должно быть положительным", severity="error"))
+    if domain == "clothing" and not u:
+        for stem, lo, hi, what in (("размер", 18, 80, "российского размера одежды"), ("рост", 50, 220, "роста, см")):
+            if low.startswith(stem) and not lo <= num <= hi:
+                out.append(Issue.make(
+                    "mismatch", field=name, value=value, expected=f"{lo}–{hi}",
+                    message=f"«{name}» = {value} вне типичного диапазона {what} ({lo}–{hi})",
+                    severity="error"))
     limits = _LIMITS.get(domain or "", {})
     dim = dimension(u) if u else None
     if dim in limits:
@@ -195,3 +203,38 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -
                 message=f"«{name}» = {value} {u} нереалистично для {what} (больше {fmt(hi)} {base_u})",
                 suggestions=[f"{value} {x}" for x in _DIM_HINT.get(dim, []) if x != u][:2], severity="error"))
     return out
+
+
+_BASE_UNIT = {"length": "мм", "mass": "кг", "volume": "л", "power": "Вт", "voltage": "В", "charge": "А·ч"}
+_GENERIC_MAX = {"length": ("м", 10), "mass": ("кг", 1000), "volume": ("л", 1000), "power": ("Вт", 100000),
+                "voltage": ("В", 1000), "charge": ("А·ч", 100), "percent": ("%", 100), "count": ("шт", 1000),
+                "rpm": ("об/мин", 100000), "torque": ("Н·м", 10000), "freq": ("Гц", 100000),
+                "area": ("м2", 1000), "density": ("г/м2", 2000), "db": ("дБ", 200)}
+
+
+def is_numeric_spec(spec: CharSpec) -> bool:
+    return spec.is_numeric or (not spec.enums and bool(spec.unit))
+
+
+def numeric_view(spec: CharSpec, domain: str | None) -> tuple[float | None, float | None, str | None]:
+    """min/max/unit for a numeric KTRU characteristic: KTRU range, else common-sense limits."""
+    unit = canon_unit(spec.unit) or spec.unit
+    if not unit:
+        low = spec.name.lower()
+        dim = expected_dimension(spec.name)
+        if dim:
+            unit = _BASE_UNIT.get(dim)
+        elif any(k in low for k in ("количеств", "число", "секци", "ящик", "полок", "мест")):
+            unit = "шт"
+        else:
+            unit = "ед."  # dimensionless KTRU number (code/grade)
+    lo, hi = spec.bounds() if spec.is_numeric else (None, None)
+    dim = dimension(unit)
+    if hi is None and dim:
+        lim = _LIMITS.get(domain or "", {}).get(dim)
+        base_u, cap = (lim[0], lim[1]) if lim else _GENERIC_MAX.get(dim, (None, None))
+        if base_u:
+            hi = convert(cap, base_u, unit)
+    if lo is None and (hi is not None or dim):
+        lo = 0.0
+    return lo, hi, unit

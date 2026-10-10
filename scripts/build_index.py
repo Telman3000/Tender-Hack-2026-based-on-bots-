@@ -464,7 +464,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--materials", default=str(ROOT / "_materials"))
     ap.add_argument("--db", default=str(DB_PATH))
-    ap.add_argument("--ktru-files", type=int, default=30, help="Max actual KTRU zip parts to parse")
+    ap.add_argument("--ktru-files", type=int, default=0, help="Max KTRU zip parts to parse (0 = all, default)")
     ap.add_argument("--ste-limit", type=int, default=20000)
     ap.add_argument("--skip-ktru", action="store_true")
     args = ap.parse_args()
@@ -489,7 +489,7 @@ def main() -> None:
     if not args.skip_ktru:
         outer = find_ktru_outer_zip(materials)
         if outer:
-            ktru_n = ingest_ktru(conn, outer, max_files=args.ktru_files)
+            ktru_n = ingest_ktru(conn, outer, max_files=args.ktru_files or 10**9)
         else:
             print("WARNING: KTRU zip not found")
     seed_ktru_from_portal_if_empty(conn)

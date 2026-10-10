@@ -4,8 +4,9 @@ import sqlite3
 import time
 
 from app.catalog import Catalog
+from app.config import CHAR_ALIASES
 from app.db import connect, db_ready
-from app.matcher import candidates_view, narrow_ktru, _cand
+from app.matcher import OK_MARGIN, candidates_view, narrow_ktru, _cand
 from app.models import AnalyzeRequest, AnalyzeResponse, Issue
 from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text, translit_if_latin
 from app.unify import unify_characteristics
@@ -37,6 +38,20 @@ class CatalogEngine:
                 merged.append(RawKV(name=c.name.strip(), value=(c.value or "").strip(), unit=c.unit or None))
         return merged, set(given)
 
+    def _canon_key(self, name: str, best) -> str:
+        sp = self.catalog.find_spec(best, name) if best is not None else None
+        if sp is not None:
+            return sp.name.lower()
+        return CHAR_ALIASES.get(name.strip().lower(), name.strip()).lower()
+
+    def _dedupe_by_canonical(self, raw: list[RawKV], user_rows: set[str], best) -> list[RawKV]:
+        """A frontend row replaces any text-parsed row with the same canonical name."""
+        user_items = [r for r in raw if r.name.lower() in user_rows]
+        keys = {self._canon_key(r.name, best) for r in user_items}
+        text_items = [r for r in raw if r.name.lower() not in user_rows
+                      and self._canon_key(r.name, best) not in keys]
+        return text_items + user_items
+
     def analyze(self, req: AnalyzeRequest) -> AnalyzeResponse:
         t0 = time.perf_counter()
         if self.catalog is None:
@@ -48,15 +63,24 @@ class CatalogEngine:
                 next_steps=["Собрать индекс из материалов хакатона"],
             )
         text = translit_if_latin(req.text)
-        product, raw = parse_free_text(text)
+        domain = detect_domain(text, req.domain_hint)
+        product, raw = parse_free_text(text, domain)
         product = guess_product_name(text) or product
         raw, user_rows = self._merge(raw, req)
-        domain = detect_domain(text, req.domain_hint)
 
         filled = [r for r in raw if r.value]
-        nr = narrow_ktru(self.catalog, product, filled, domain, domain_detected=domain is not None)
+        nr = narrow_ktru(self.catalog, product, filled, domain, domain_detected=domain is not None, text=text)
+        if req.characteristics and nr.best is not None:
+            raw = self._dedupe_by_canonical(raw, user_rows, nr.best)
+            filled = [r for r in raw if r.value]
         issues = list(nr.issues)
-        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows)
+        if text != req.text:
+            issues.append(Issue.make(
+                "typo", field="Наименование", value=req.text, expected=text, suggestions=[text],
+                severity="warning",
+                message=f"Описание набрано латиницей — распознано как «{text}». Проверьте и введите кириллицей",
+            ))
+        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text)
         issues.extend(char_issues)
         next_steps = list(nr.next_steps)
         for i in issues:
@@ -65,14 +89,22 @@ class CatalogEngine:
             elif i.severity == "error" and i.field:
                 next_steps.append(f"Исправьте «{i.field}»" + (f": {i.suggestions[0]}" if i.suggestions else ""))
 
-        if any(i.severity == "error" for i in issues):
+        # precedence: not_found > error > need_more > ambiguous > ok
+        missing_required = any(c.required and not c.value for c in chars)
+        if nr.best is None:
+            status = "not_found"
+        elif any(i.severity == "error" for i in issues):
             status = "error"
-        elif nr.best is None:
+        elif not filled or missing_required:
             status = "need_more"
-        elif any(i.type == "ambiguous" for i in issues):
+        elif (any(i.type in ("ambiguous", "typo") for i in issues) or nr.margin < OK_MARGIN):
             status = "ambiguous"
-        elif not filled:
-            status = "need_more"
+            if not any(i.type == "ambiguous" for i in issues):
+                issues.append(Issue.make(
+                    "ambiguous", severity="warning",
+                    message=f"Отрыв лучшего кода от следующего ({nr.margin:.1f}) мал — проверьте кандидатов",
+                    suggestions=["Добавьте отличительные характеристики"],
+                ))
         else:
             status = "ok"
         if not filled:

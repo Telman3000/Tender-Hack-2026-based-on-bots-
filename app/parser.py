@@ -21,10 +21,10 @@ _KV_COLON = re.compile(
 
 _NUM_UNIT = re.compile(
     r"(?P<label>высота|ширина|глубина|длина|масса|вес|толщина|диаметр|мощность|"
-    r"напряжение|объ[её]м|размер)\s+"
+    r"напряжение|объ[её]м|размер|рост)\s+"
     r"(?P<value>\d+(?:[.,]\d+)?)\s*"
     r"(?P<unit>миллиметр\w*|сантиметр\w*|метр\w*|килограмм\w*|грамм\w*|литр\w*|ватт\w*|вольт\w*|"
-    r"мм|см|м|кг|г|гр|шт|мл|л|кВт|Вт|вт|В|А|%)?(?![а-яa-z])",
+    r"мм|см|м|кг|г|гр|шт|мл|л|кВт|Вт|вт|В|А|%)?(?![а-яa-z\d])",
     re.IGNORECASE,
 )
 
@@ -148,7 +148,34 @@ def canonicalize_unit(unit: str | None) -> str | None:
     return UNIT_ALIASES.get(unit.strip().lower(), unit.strip())
 
 
-def parse_free_text(text: str) -> tuple[str, list[RawKV]]:
+_X = r"\s*[хxX×*]\s*"
+_DIMS = re.compile(
+    rf"(?:(?P<hint>[ШшДдГгВвWwLlDdHh]{_X}[ШшДдГгВвWwLlDdHh](?:{_X}[ШшДдГгВвWwLlDdHh])?)\s*[:=-]?\s*)?"
+    rf"(?<![\d.,])(?P<a>\d+(?:[.,]\d+)?){_X}(?P<b>\d+(?:[.,]\d+)?)(?:{_X}(?P<c>\d+(?:[.,]\d+)?))?"
+    r"\s*(?P<unit>мм|см|м|mm|cm|m)?(?![а-яa-z\d])",
+    re.I,
+)
+_HINT = {"ш": "Ширина", "w": "Ширина", "г": "Глубина", "d": "Глубина", "в": "Высота", "h": "Высота",
+         "д": "Длина", "l": "Длина"}
+
+
+def composite_dimensions(text: str) -> list[RawKV]:
+    """«1200х700х750 мм», «ШхГхВ 1200x600x750» -> Ширина/Глубина/Высота (furniture only)."""
+    out: list[RawKV] = []
+    for m in _DIMS.finditer(text):
+        vals = [v for v in (m.group("a"), m.group("b"), m.group("c")) if v]
+        if m.group("hint"):
+            letters = [x.lower() for x in re.findall(r"[ШшДдГгВвWwLlDdHh]", m.group("hint"))]
+            names = [_HINT.get(x, "Размер") for x in letters]
+        else:
+            names = ["Ширина", "Глубина", "Высота"][: len(vals)]
+        unit = canonicalize_unit(m.group("unit")) if m.group("unit") else None
+        for n, v in zip(names, vals):
+            out.append(RawKV(name=n, value=v.replace(",", "."), unit=unit))
+    return out
+
+
+def parse_free_text(text: str, domain: str | None = None) -> tuple[str, list[RawKV]]:
     text = re.sub(r"\s+", " ", text.strip())
     product = guess_product_name(text)
     found: list[RawKV] = []
@@ -193,7 +220,15 @@ def parse_free_text(text: str) -> tuple[str, list[RawKV]]:
     for m in _KV_COLON.finditer(text):
         add(m.group("name"), m.group("value"))
 
-    for m in _NUM_UNIT.finditer(text):
+    if domain == "furniture":
+        for kv in composite_dimensions(text):
+            add(kv.name, kv.value, kv.unit)
+        text_for_num = _DIMS.sub(" ", text)
+    else:
+        text_for_num = text
+    for m in _NUM_UNIT.finditer(text_for_num):
+        if re.match(r"\s*[хxX×*]\s*\d", text_for_num[m.end():]):
+            continue  # part of a composite value («17х19», «размер 1200х750»)
         add(m.group("label"), m.group("value"), m.group("unit"))
 
     for m in _PERCENT.finditer(text):
