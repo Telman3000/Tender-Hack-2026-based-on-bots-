@@ -401,7 +401,7 @@ function fFill(p, n, t) {
   const fsz = pngSize(path.join(SRC, 'screens', 'fill_block.png')), fh = 2.38, fw = fh * fsz.w / fsz.h;
   s.addImage({ path: path.join(SRC, 'screens', 'fill_block.png'), x: 0.85 + (5.75 - fw) / 2, y: 4.07, w: fw, h: fh });
   card(s, [6.83, 1.85, 5.65, 4.75]);
-  label(s, 'Пакетная проверка (CSV): ' + F.batch.rows + ' строк ≈ ' + F.batch.time.replace('≈', '').trim(), [7.03, 1.97, 5.3, 0.3]);
+  label(s, 'Пакетная проверка (CSV): ' + F.batch.rows + ' строк за ' + F.batch.time, [7.03, 1.97, 5.3, 0.3]);
   const bsz = pngSize(path.join(SRC, 'screens', 'batch_view.png')), bw = 5.25, bh = bw * bsz.h / bsz.w;
   // crop starts at the «Обработано …» line (≈462 px of 1425-px-wide screenshot)
   s.addImage({ path: path.join(SRC, 'screens', 'batch_view.png'), x: 7.03, y: 2.4, w: bw, h: bh, sizing: { type: 'crop', x: 0, y: bw * 462 / bsz.w, w: bw, h: 3.05 } });
@@ -416,7 +416,7 @@ function fMetrics(p, n, t) {
   const s = p.addSlide();
   chrome(s, n, t);
   headline(s, 'Код КТРУ первым: ' + M.main.top1 + ', на новых позициях — ' + M.heldOut.top1, [0.85, 1.0, 11.6, 0.6], { fontSize: 24 });
-  body(s, 'Эталоны зафиксированы до прогона · два набора по ' + M.main.cases + ' позиций · источник: ' + F.source, [0.85, 1.6, 11.6, 0.35], { fontSize: 13, color: MUTED });
+  body(s, M.versionNote + ' · ' + F.build + ' · эталоны зафиксированы до прогона · ' + F.source, [0.85, 1.6, 11.6, 0.35], { fontSize: 13, color: MUTED });
   const ie = M.injectedErrors;
   const tiles = [
     [M.main.top1 + ' · ' + M.heldOut.top1, 'Код на 1-м месте', 'основной / отложенный: ' + M.main.top1Pct + ' / ' + M.heldOut.top1Pct],
