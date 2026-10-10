@@ -85,7 +85,7 @@ function schedule(withChars) {
 }
 async function analyze(withChars, fromButton) {
   const text = $("text").value.trim();
-  if (!text) return;
+  if (!text) { showEmpty(); return; }
   if (!withChars) checkNewText(fromButton);
   const seq = ++state.seq;
   $("status").className = "status idle";
@@ -107,6 +107,7 @@ async function analyze(withChars, fromButton) {
     });
     const data = await res.json();
     if (seq !== state.seq) return; // устаревший ответ
+    if (res.status === 422) { showEmpty("Запрос не принят: " + (typeof data.detail === "string" ? data.detail : "проверьте текст и категорию")); return; }
     if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Ошибка API");
     state.sentText = text;
     render(data);
@@ -119,6 +120,15 @@ async function analyze(withChars, fromButton) {
   }
 }
 
+
+const EMPTY_HINT = "Введите описание товара, например: «Кресло офисное обивка ткань цвет черный высота 1080 мм»";
+function showEmpty(extra) {
+  clearTimeout(state.timer); state.seq++;
+  state.data = null; state.chars = []; resetOverrides(); state.lastKey = null;
+  $("status").className = "status idle"; $("status").textContent = extra || "Введите описание товара";
+  $("result").className = "result empty"; $("result").textContent = EMPTY_HINT;
+  drawHighlight();
+}
 
 /* ---------- статусы кода и карточки (новый контракт + fallback) ---------- */
 const CODE_LABELS = { determined: "определён", ambiguous: "несколько вариантов", not_found: "не найден" };
@@ -240,6 +250,58 @@ function drawHighlight() {
   box.innerHTML = html;
 }
 
+/* ---------- порядок: КТРУ -> Портал -> Новая (стабильно внутри группы) ---------- */
+const SOURCE_RANK = { ktru: 0, portal: 1, new: 2 };
+function sortBySource(list) {
+  return list.map((c, i) => [c, i]).sort((a, b) => (SOURCE_RANK[a[0].source] - SOURCE_RANK[b[0].source]) || (a[1] - b[1])).map((x) => x[0]);
+}
+
+/* ---------- «Допишите ещё n характеристик» ---------- */
+const isFilled = (c) => String(c.value ?? "").trim() !== "";
+function fillBlock(data, issues) {
+  const comp = completenessOf(data);
+  const total = (comp.required_total || 0) + (comp.optional_total || 0);
+  const filled = (comp.required_filled || 0) + (comp.optional_filled || 0);
+  const empty = state.chars.map((c, i) => ({ c, i })).filter((x) => x.c.name.trim() && !isFilled(x.c));
+  // обязательные из issues(missing), которых нет в таблице
+  const extra = issues.filter((x) => x.type === "missing" && x.field && !state.chars.some((c) => norm(c.name) === norm(x.field)))
+    .map((x) => ({ c: normChar({ name: x.field, value: "", source: "ktru", required: true }), i: -1 }));
+  const items = [...empty, ...extra];
+  const ordered = [...items.filter((x) => x.c.required), ...items.filter((x) => !x.c.required)];
+  if (!ordered.length || !data.best_ktru) return "";
+  const nReq = ordered.filter((x) => x.c.required).length;
+  const pct = total ? Math.round((filled / total) * 100) : 0;
+  const row = ({ c, i }) => {
+    let ctl = "";
+    if (c.allowed) {
+      ctl = `<div class="chips">${c.allowed.slice(0, 15).map((v) => `<button type="button" class="chip" data-fill="${i}" data-fname="${escapeHtml(c.name)}" data-fval="${escapeHtml(v)}">${escapeHtml(v)}</button>`).join("")}${c.allowed.length > 15 ? `<span class="muted">ещё ${c.allowed.length - 15} — в таблице</span>` : ""}</div>`;
+    } else if (c.min !== undefined || c.max !== undefined) {
+      ctl = `<div class="fill-range"><input type="number" data-frange="${i}" data-fname="${escapeHtml(c.name)}" ${c.min != null ? `min="${c.min}"` : ""} ${c.max != null ? `max="${c.max}"` : ""} placeholder="${c.min ?? "…"}–${c.max ?? "…"}" />
+        <span class="muted">${c.min ?? "…"} – ${c.max ?? "…"} ${escapeHtml(c.unit || "")}</span>
+        <button type="button" class="btn ghost small" data-frange-ok="${i}">OK</button></div>`;
+    } else {
+      ctl = `<div class="fill-range"><input data-ftext="${i}" data-fname="${escapeHtml(c.name)}" placeholder="значение" /><button type="button" class="btn ghost small" data-ftext-ok="${i}">OK</button></div>`;
+    }
+    return `<div class="fill-item ${c.required ? "req" : "opt"}"><span class="fname">${escapeHtml(c.name)}</span>${c.required ? '<span class="req-tag">обязательная</span>' : ' <span class="muted">необязательная</span>'} ${badge(c.source)}${ctl}</div>`;
+  };
+  return `<div class="block fill" id="fillBlock"><div class="fill-head"><h2>Допишите ещё ${ordered.length} ${plural(ordered.length, "характеристику", "характеристики", "характеристик")}${nReq ? ` <span class="muted">(обязательных: ${nReq})</span>` : ""}</h2>
+    <span class="counter" id="fillCounter">${filled} из ${total}</span></div>
+    <div class="progress"><i style="width:${pct}%"></i></div>${ordered.map(row).join("")}</div>`;
+}
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? few : many;
+}
+function applyFill(i, name, value) {
+  let row = i >= 0 ? state.chars[i] : state.chars.find((c) => norm(c.name) === norm(name));
+  if (!row) { row = normChar({ name, value: "", source: "ktru", required: true }); state.chars.push(row); }
+  syncText(row, "value", String(row.value ?? ""), value);
+  row.value = value;
+  markDirty(row);
+  clearTimeout(state.timer);
+  analyze(true);
+}
+
 /* ---------- render ---------- */
 function badge(src) {
   return `<span class="badge ${src}">${SOURCE_LABELS[src]}</span>`;
@@ -339,13 +401,14 @@ function render(data) {
   }
   state.lastKey = key;
   state.data = data;
-  state.chars = (data.characteristics || []).map(normChar);
+  state.chars = sortBySource((data.characteristics || []).map(normChar));
   // повторно применяем правки пользователя из таблицы поверх ответа
   for (const [key, ov] of state.dirty) {
     const row = state.chars.find((c) => norm(c.name) === key);
     if (row) { row.value = ov.value; row.unit = ov.unit; }
     else state.chars.push(normChar({ ...ov, source: ov.source || "new" }));
   }
+  state.chars = sortBySource(state.chars);
   draw();
 }
 function draw() {
@@ -362,9 +425,10 @@ function draw() {
   $("status").textContent = statusLabel(data.status);
 
   const best = data.best_ktru
-    ? `<div class="block"><h2>Код КТРУ</h2><div class="best"><span class="code">${escapeHtml(data.best_ktru.code)}</span><span class="muted">${data.best_ktru.score ?? ""}</span></div>
-       <div><b>${escapeHtml(data.best_ktru.name)}</b></div>
-       ${data.best_ktru.okpd2 ? `<div class="muted">ОКПД2: ${escapeHtml(data.best_ktru.okpd2)}</div>` : ""}
+    ? `<div class="block product-card" id="productCard"><div class="pc-head"><div class="pc-img">▦</div><div style="flex:1">
+       <div class="best"><span class="code">${escapeHtml(data.best_ktru.code)}</span><span class="muted">${data.best_ktru.score ?? ""}</span></div>
+       <div class="pc-title">${escapeHtml(data.best_ktru.name)}</div>
+       <dl class="pc-props"><dt>Код КТРУ</dt><dd>${escapeHtml(data.best_ktru.code)}</dd>${data.best_ktru.okpd2 ? `<dt>ОКПД2</dt><dd>${escapeHtml(data.best_ktru.okpd2)}</dd>` : ""}<dt>Категория</dt><dd>${escapeHtml(data.detected_domain || "—")}</dd></dl></div></div>
        <div class="muted" style="margin-top:6px">Код КТРУ — это группа товаров; цены на конкретную СТЕ задают поставщики, по ним считается референтная цена.</div></div>`
     : "";
   const ib = issuesBlock(issues);
@@ -377,6 +441,7 @@ function draw() {
     <div class="block"><h2>Распознано${elapsed}</h2>
       <div class="muted">Категория: <b>${escapeHtml(data.detected_domain || "—")}</b> · Товар: <b>${escapeHtml(data.product_guess || "—")}</b></div></div>
     ${best}
+    ${fillBlock(data, issues)}
     <div class="block"><h2>Характеристики</h2>${charsTable(issues)}${state.dirty.size ? `<div class="hint" id="ovNote">Изменено в таблице: ${state.dirty.size}${state.textNote ? " · правки таблицы имеют приоритет над текстом" : ""} <button class="btn ghost small" id="resetOv">Сбросить правки таблицы</button></div>` : ""}</div>
     ${correctionsBlock(data)}
     <div class="block"><h2>Подсказки</h2>${ib.html}</div>
@@ -417,6 +482,15 @@ function bind(otherIssues) {
     resetOverrides();
     clearTimeout(state.timer); analyze(false); // исходный текст, без characteristics
   });
+  root.querySelectorAll("[data-fill]").forEach((el) => el.addEventListener("click", () => applyFill(+el.dataset.fill, el.dataset.fname, el.dataset.fval)));
+  const okBtn = (sel, inSel) => root.querySelectorAll(`[${sel}]`).forEach((b) => b.addEventListener("click", () => {
+    const inp = root.querySelector(`[${inSel}="${b.getAttribute(sel)}"]`);
+    if (inp && inp.value.trim()) applyFill(+b.getAttribute(sel), inp.dataset.fname, inp.value.trim());
+  }));
+  okBtn("data-frange-ok", "data-frange"); okBtn("data-ftext-ok", "data-ftext");
+  root.querySelectorAll("[data-frange],[data-ftext]").forEach((inp) => inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && inp.value.trim()) applyFill(+(inp.dataset.frange ?? inp.dataset.ftext), inp.dataset.fname, inp.value.trim());
+  }));
   const add = $("addRow");
   if (add) add.addEventListener("click", () => {
     state.chars.push(normChar({ name: "", value: "", source: "new" }));
@@ -534,6 +608,7 @@ $("text").addEventListener("input", (e) => {
   const t = e && e.inputType || "";
   if (t === "insertFromPaste" || t === "insertFromDrop" || t === "insertReplacementText") resetOverrides();
   drawHighlight();
+  if (!$("text").value.trim()) { showEmpty(); return; }
   schedule(false);
 });
 $("domain").addEventListener("change", () => schedule(false));
@@ -546,3 +621,214 @@ $("clear").onclick = () => {
   drawHighlight();
 };
 loadDemos().catch(console.error);
+
+/* ---------- вкладки ---------- */
+function showTab(tab) {
+  document.querySelectorAll(".nav .tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  $("viewSingle").classList.toggle("hidden", tab !== "single");
+  $("viewBatch").classList.toggle("hidden", tab !== "batch");
+  $("crumbLast").textContent = tab === "single" ? "Создание СТЕ" : "Пакетная проверка";
+  $("pageTitle").textContent = tab === "single" ? "Создание карточки товара" : "Пакетная проверка наименований";
+}
+document.querySelectorAll(".nav .tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+/* ---------- пакетная проверка CSV ---------- */
+const BATCH_CONCURRENCY = 4;
+const batch = { items: [], results: [], mode: null, t0: 0, total_ms: 0, running: false };
+function decodeCsv(buf) {
+  const u8 = new Uint8Array(buf);
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(u8).replace(/^\uFEFF/, ""); }
+  catch (_) { return new TextDecoder("windows-1251").decode(u8); }
+}
+function parseCsvLine(line, delim) {
+  const out = []; let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"' && cur === "") q = true;
+    else if (delim && ch === delim) { out.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+// 1 столбец наименований. Разделитель: «;», если он есть в файле; иначе «,» — но только когда
+// строки начинаются с кавычки (в наименованиях запятые встречаются, поэтому без кавычек строка берётся целиком).
+function parseNames(text) {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (!lines.length) return [];
+  const delim = lines.some((l) => l.includes(";")) ? ";" : lines.every((l) => l.trim().startsWith('"')) ? "," : null;
+  let names = lines.map((l) => (parseCsvLine(l, delim)[0] || "").trim()).filter(Boolean);
+  if (names.length && /^(наименование|название|name|text|товар|описание)/i.test(names[0]) && names[0].length < 40 && !/\d/.test(names[0])) names = names.slice(1);
+  return names;
+}
+function summarize(results) {
+  const s = { total: results.length, determined: 0, ambiguous: 0, not_found: 0, out_of_scope: 0, complete: 0, incomplete: 0, invalid: 0, errors: 0 };
+  for (const r of results) {
+    if (!r) continue;
+    if (r.error) { s.errors++; continue; }
+    s[r.code_status] = (s[r.code_status] || 0) + 1;
+    s[r.card_status] = (s[r.card_status] || 0) + 1;
+  }
+  return s;
+}
+const isOutOfScope = (d) => !!(d && (d.out_of_scope || d.not_our_category || d.in_scope === false || d.scope === "out" || d.code_status === "out_of_scope"));
+function rowView(id, text, data, ms) {
+  if (!data || data.error) return { id, text, error: data ? data.error : "нет ответа", ms };
+  const issues = (data.issues || []).map(normIssue);
+  const save = state.chars; state.chars = (data.characteristics || []).map(normChar);
+  const comp = completenessOf(data);
+  const card = cardStatus(data, issues, comp);
+  state.chars = save;
+  const chars = sortBySource((data.characteristics || []).map(normChar));
+  return {
+    id, text, data, ms: Math.round(data.debug && data.debug.elapsed_ms != null ? data.debug.elapsed_ms : ms),
+    code: data.best_ktru ? data.best_ktru.code : "", name: data.best_ktru ? data.best_ktru.name : "",
+    code_status: isOutOfScope(data) ? "out_of_scope" : codeStatus(data), card_status: card, out_of_scope: isOutOfScope(data),
+    missing: Math.max(0, (comp.required_total || 0) - (comp.required_filled || 0)),
+    notes: issues.filter((x) => x.type !== "missing").map((x) => (x.field ? x.field + ": " : "") + x.message).join("; "),
+    chars: chars.filter(isFilled).map((c) => `${c.name}=${c.value}${c.unit ? " " + c.unit : ""}`).join("; "),
+  };
+}
+CODE_LABELS.out_of_scope = "не наша категория";
+const CARD_LABELS = { complete: "заполнена", incomplete: "неполная", invalid: "есть ошибки" };
+function drawBatchRow(i) {
+  const r = batch.results[i];
+  const tr = $("batchBody").children[i];
+  if (!tr || !r) return;
+  const cls = (v) => (v === "determined" || v === "complete" ? "good" : v === "not_found" || v === "invalid" ? "bad" : "mid");
+  tr.innerHTML = r.error
+    ? `<td class="num">${i + 1}</td><td>${escapeHtml(r.text)}</td><td colspan="6" class="muted">Ошибка: ${escapeHtml(r.error)}</td><td>${r.ms ?? ""}</td>`
+    : `<td class="num">${i + 1}</td><td>${escapeHtml(r.text)}</td><td class="code">${escapeHtml(r.code || "—")}</td><td>${escapeHtml(r.name)}</td>
+      <td><span class="sbadge ${cls(r.code_status)}">${CODE_LABELS[r.code_status]}</span></td>
+      <td><span class="sbadge ${cls(r.card_status)}">${CARD_LABELS[r.card_status]}</span></td>
+      <td>${r.missing}</td><td class="muted">${escapeHtml(r.notes)}</td><td>${r.ms ?? ""} мс</td>`;
+}
+function drawSummary(done) {
+  const s = summarize(batch.results);
+  const n = batch.results.filter(Boolean).length;
+  $("pbar").style.width = (batch.items.length ? Math.round((n / batch.items.length) * 100) : 0) + "%";
+  $("progressText").textContent = `Обработано ${n} из ${batch.items.length}` + (done ? ` · общее время ${batch.total_ms} мс` : "");
+  $("summary").innerHTML = `<span class="sbadge mid" id="sumTotal">Всего: ${s.total}</span>
+    <span class="sbadge good">Код определён: ${s.determined}</span><span class="sbadge mid">Несколько вариантов: ${s.ambiguous}</span><span class="sbadge bad">Не найден: ${s.not_found}</span><span class="sbadge mid" id="sumOos">Не наша категория: ${s.out_of_scope}</span>
+    <span class="sbadge good">Заполнена: ${s.complete}</span><span class="sbadge mid">Неполная: ${s.incomplete}</span><span class="sbadge bad">С ошибками: ${s.invalid}</span>
+    ${s.errors ? `<span class="sbadge bad">Сбой запроса: ${s.errors}</span>` : ""}${done ? `<span class="sbadge mid" id="sumTime">Время: ${batch.total_ms} мс</span>` : ""}`;
+}
+async function analyzeOne(text) {
+  const t = performance.now();
+  try {
+    const res = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    const data = await res.json();
+    if (!res.ok) return [{ error: typeof data.detail === "string" ? data.detail : "HTTP " + res.status }, Math.round(performance.now() - t)];
+    return [data, Math.round(performance.now() - t)];
+  } catch (e) { return [{ error: e.message }, Math.round(performance.now() - t)]; }
+}
+async function runBatch(names) {
+  if (batch.running) return;
+  batch.running = true;
+  batch.items = names.map((text, i) => ({ id: String(i + 1), text }));
+  batch.results = new Array(names.length).fill(null);
+  $("exportCsv").disabled = true;
+  $("batchBody").innerHTML = batch.items.map((it, i) => `<tr data-row="${i}"><td class="num">${i + 1}</td><td>${escapeHtml(it.text)}</td><td colspan="7" class="muted">ожидает…</td></tr>`).join("");
+  drawSummary(false);
+  batch.t0 = performance.now();
+  const put = (d, k) => {
+    const idx = d && d.id != null ? batch.items.findIndex((x) => x.id === String(d.id)) : k;
+    const i = idx >= 0 ? idx : k;
+    if (i < 0 || i >= batch.items.length || batch.results[i]) return;
+    batch.results[i] = rowView(batch.items[i].id, batch.items[i].text, d && (d.result || d), null);
+    drawBatchRow(i); drawSummary(false);
+  };
+  const payload = JSON.stringify({ items: batch.items.slice(0, 500) });
+  let ok = false;
+  batch.mode = "per-row";
+  if (batch.items.length <= 500) {
+    // 1) потоковый ответ NDJSON: строка на позицию, последняя — summary
+    try {
+      const res = await fetch("/api/analyze/batch?stream=1", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload });
+      if (res.ok && res.body && res.body.getReader) {
+        const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "", k = 0, any = false;
+        const line = (l) => { l = l.trim(); if (!l) return; let o; try { o = JSON.parse(l); } catch (_) { return; }
+          if (o.summary && !o.result && o.id == null && !o.characteristics) return; any = true; put(o, k++); };
+        for (;;) { const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true });
+          let nl; while ((nl = buf.indexOf("\n")) >= 0) { line(buf.slice(0, nl)); buf = buf.slice(nl + 1); } }
+        line(buf);
+        if (any) { ok = true; batch.mode = "stream"; }
+      } else if (res.ok) {
+        const txt = await res.text(); let k = 0;
+        txt.split("\n").forEach((l) => { try { const o = JSON.parse(l); if (!(o.summary && o.id == null && !o.result)) { put(o, k++); ok = true; } } catch (_) {} });
+        if (ok) batch.mode = "stream";
+      }
+    } catch (_) { ok = false; }
+    // 2) обычный пакетный ответ {results, summary}
+    if (!ok) {
+      try {
+        const res = await fetch("/api/analyze/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload });
+        if (res.ok) { const body = await res.json(); if (Array.isArray(body.results)) { body.results.forEach(put); ok = true; batch.mode = "batch"; } }
+      } catch (_) { ok = false; }
+    }
+  }
+  $("batchMode").textContent = { stream: "Режим: потоковый API /api/analyze/batch?stream=1", batch: "Режим: пакетный API /api/analyze/batch" }[batch.mode]
+    || `Режим: построчно через /api/analyze (параллельно ${BATCH_CONCURRENCY})`;
+  if (!ok) {
+    let next = 0;
+    const worker = async () => {
+      while (next < batch.items.length) {
+        const i = next++;
+        if (batch.results[i]) continue;
+        const [data, ms] = await analyzeOne(batch.items[i].text);
+        batch.results[i] = rowView(batch.items[i].id, batch.items[i].text, data, ms);
+        drawBatchRow(i);
+        drawSummary(false);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(BATCH_CONCURRENCY, batch.items.length) }, worker));
+  }
+  batch.total_ms = Math.round(performance.now() - batch.t0);
+  drawSummary(true);
+  $("exportCsv").disabled = false;
+  batch.running = false;
+}
+const csvCell = (v) => { const s = String(v ?? ""); return /[";\n\r]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s; };
+function buildExportCsv() {
+  const head = ["№", "Исходный текст", "Код КТРУ", "Наименование", "Статус кода", "Статус карточки", "Не хватает обязательных", "Замечания", "Время, мс", "Характеристики"];
+  const lines = [head.join(";")];
+  batch.results.forEach((r, i) => {
+    if (!r) return;
+    lines.push((r.error
+      ? [i + 1, r.text, "", "", "ошибка", "", "", r.error, r.ms ?? "", ""]
+      : [i + 1, r.text, r.code, r.name, CODE_LABELS[r.code_status], CARD_LABELS[r.card_status], r.missing, r.notes, r.ms ?? "", r.chars]).map(csvCell).join(";"));
+  });
+  return "\uFEFF" + lines.join("\r\n") + "\r\n";
+}
+$("exportCsv").addEventListener("click", () => {
+  const blob = new Blob([buildExportCsv()], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "ktru_batch_result.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+async function handleFile(file) {
+  if (!file) return;
+  const names = parseNames(decodeCsv(await file.arrayBuffer()));
+  if (!names.length) { $("progressText").textContent = "В файле не найдено наименований"; return; }
+  await runBatch(names);
+}
+$("csvFile").addEventListener("change", (e) => handleFile(e.target.files[0]));
+$("pick").addEventListener("click", (e) => { e.preventDefault(); $("csvFile").click(); });
+const drop = $("drop");
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => handleFile(e.dataTransfer && e.dataTransfer.files[0]));
+$("batchBody").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-row]");
+  if (!tr) return;
+  const r = batch.results[+tr.dataset.row];
+  if (!r) return;
+  showTab("single");
+  clearTimeout(state.timer); resetOverrides(); state.lastKey = null;
+  $("text").value = r.text; $("domain").value = "";
+  analyze(false);
+});
+window.__ktru = { batch, parseNames, decodeCsv, buildExportCsv, handleFile, runBatch, showTab, state };

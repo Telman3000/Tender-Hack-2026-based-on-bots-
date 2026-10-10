@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Помощник заполнения характеристик — Портал поставщиков</title>
-  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20261010e" />
-  <link rel="stylesheet" href="/static/styles.css?v=20261010e" />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20261010f" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261010f" />
 </head>
 <body>
   <header class="top">
@@ -17,11 +17,21 @@
           <div class="brand-sub">Помощник заполнения характеристик и подбора КТРУ</div>
         </div>
       </div>
-      <div class="meta">Tender Hack 2026</div>
+      <div class="user"><span class="meta">Tender Hack 2026</span><span class="avatar">👤</span></div>
     </div>
   </header>
+  <nav class="nav">
+    <div class="nav-inner">
+      <span class="muted-link nav-item" style="padding:12px 14px">Каталог</span>
+      <button type="button" class="tab active" data-tab="single" id="tabSingle">Создание СТЕ</button>
+      <button type="button" class="tab" data-tab="batch" id="tabBatch">Пакетная проверка (CSV)</button>
+      <span class="muted-link nav-item" style="padding:12px 14px">Закупки</span>
+    </div>
+  </nav>
+  <div class="crumbs"><a href="#">Главная</a><span class="sep">›</span><a href="#">Каталог продукции</a><span class="sep">›</span><span id="crumbLast">Создание СТЕ</span></div>
+  <div class="page-title" id="pageTitle">Создание карточки товара</div>
 
-  <main class="layout">
+  <main class="layout" id="viewSingle">
     <section class="card input-panel">
       <h1>Описание товара</h1>
       <p class="lead">Введите описание в свободной форме — сервис выделит характеристики, проверит их по КТРУ и сузит список кодов. Таблицу можно редактировать: результат пересчитается автоматически.</p>
@@ -57,8 +67,26 @@
     </section>
   </main>
 
+  <main class="layout single hidden" id="viewBatch">
+    <section class="card">
+      <h1>Пакетная проверка</h1>
+      <p class="lead">CSV-файл с одним столбцом наименований (UTF-8 или Windows-1251, разделитель «;» или «,», заголовок необязателен). Каждая строка проверяется так же, как одиночный товар; щелчок по строке открывает её в редакторе.</p>
+      <label class="drop" id="drop" for="csvFile">Перетащите CSV сюда или <a href="#" id="pick">выберите файл</a>
+        <input type="file" id="csvFile" accept=".csv,.txt,text/csv" hidden />
+      </label>
+      <div class="actions">
+        <button class="btn ghost" id="exportCsv" disabled>Выгрузить результат (CSV)</button>
+        <span class="muted" id="batchMode"></span>
+      </div>
+      <div class="pbar"><i id="pbar"></i></div>
+      <div class="muted" id="progressText"></div>
+      <div class="summary" id="summary"></div>
+      <table class="batch" id="batchTable"><thead><tr><th>№</th><th>Исходный текст</th><th>Код КТРУ</th><th>Наименование</th><th>Статус кода</th><th>Статус карточки</th><th>Не хватает обяз.</th><th>Замечания</th><th>Время</th></tr></thead><tbody id="batchBody"></tbody></table>
+    </section>
+  </main>
+
   <footer class="foot">Источники характеристик: <span class="badge ktru">КТРУ</span> <span class="badge portal">Портал</span> <span class="badge new">Новая</span></footer>
 
-  <script src="/static/app.js?v=20261010e"></script>
+  <script src="/static/app.js?v=20261010f"></script>
 </body>
 </html>
