@@ -1,9 +1,10 @@
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
-DB_PATH = PROCESSED_DIR / "catalog.db"
+DB_PATH = Path(os.environ.get("CATALOG_DB", PROCESSED_DIR / "catalog.db"))
 FRONTEND_DIR = ROOT / "frontend"
 
 # OKPD2 prefixes for hackathon scope
