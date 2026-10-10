@@ -44,6 +44,8 @@ def detect_domain_from_text(text: str, okpd2: str | None = None) -> str | None:
         for domain, prefixes in OKPD2_PREFIXES.items():
             if any(okpd2.startswith(p) for p in prefixes):
                 return domain
+        # OKPD2 is authoritative: out-of-scope group means out of scope
+        return None
     low = (text or "").lower()
     scores = {
         d: sum(1 for kw in kws if kw in low) for d, kws in DOMAIN_KEYWORDS.items()
@@ -178,6 +180,83 @@ def _local(tag: str) -> str:
     return tag
 
 
+SKIP_STATUSES = {"INACTIVE", "TERMINATED", "EXCLUDED", "DELETED", "CANCELLED"}
+
+
+def _num(text: str | None) -> float | None:
+    if text is None:
+        return None
+    try:
+        return float(text.strip().replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _parse_characteristic(ch) -> dict | None:
+    """Characteristic with its allowed values: qualitative list, concrete numbers, ranges + OKEI."""
+    name = None
+    required = False
+    values: list[dict] = []
+    for sub in ch:
+        sl = _local(sub.tag)
+        if sl == "name":
+            name = (sub.text or "").strip()
+        elif sl == "isRequired":
+            required = (sub.text or "").lower() == "true"
+        elif sl == "values":
+            for val in sub:
+                if _local(val.tag) != "value":
+                    continue
+                unit = okei_code = None
+                quality = None
+                concrete: list[float] = []
+                ranges: list[dict] = []
+                for el in val:
+                    el_l = _local(el.tag)
+                    if el_l == "qualityDescription" and el.text:
+                        quality = el.text.strip()
+                    elif el_l == "OKEI":
+                        for o in el:
+                            if _local(o.tag) == "code":
+                                okei_code = (o.text or "").strip()
+                            elif _local(o.tag) == "name":
+                                unit = (o.text or "").strip()
+                    elif el_l == "valueSet":
+                        for cv in el.iter():
+                            if _local(cv.tag) == "concreteValue":
+                                n = _num(cv.text)
+                                if n is not None:
+                                    concrete.append(n)
+                    elif el_l == "rangeSet":
+                        for vr in el.iter():
+                            if _local(vr.tag) != "valueRange":
+                                continue
+                            r: dict = {}
+                            for x in vr:
+                                xl = _local(x.tag)
+                                if xl == "min":
+                                    r["min"] = _num(x.text)
+                                elif xl == "max":
+                                    r["max"] = _num(x.text)
+                                elif xl == "minMathNotation":
+                                    r["min_op"] = (x.text or "").strip()
+                                elif xl == "maxMathNotation":
+                                    r["max_op"] = (x.text or "").strip()
+                            ranges.append(r)
+                base = {"unit": unit, "okei_code": okei_code}
+                if quality:
+                    values.append({**base, "kind": "enum", "value": quality})
+                for n in concrete:
+                    values.append({**base, "kind": "number", "value": str(n), "min": n, "max": n})
+                for r in ranges:
+                    values.append({**base, "kind": "range", **r})
+                if not quality and not concrete and not ranges and unit:
+                    values.append({**base, "kind": "any"})
+    if not name:
+        return None
+    return {"name": name, "required": required, "values": values}
+
+
 def parse_ktru_xml_bytes(data: bytes, conn, max_insert: int | None = None) -> int:
     """Stream-parse one nsiKTRU XML, insert relevant positions."""
     inserted = 0
@@ -198,6 +277,7 @@ def parse_ktru_xml_bytes(data: bytes, conn, max_insert: int | None = None) -> in
         code = name = okpd2 = okei = status = None
         required = []
         chars = []
+        char_values: list[dict] = []
 
         for child in data_el:
             loc = _local(child.tag)
@@ -220,20 +300,15 @@ def parse_ktru_xml_bytes(data: bytes, conn, max_insert: int | None = None) -> in
                 for ch in child:
                     if _local(ch.tag) != "characteristic":
                         continue
-                    ch_name = None
-                    is_req = False
-                    for sub in ch:
-                        sl = _local(sub.tag)
-                        if sl == "name":
-                            ch_name = (sub.text or "").strip()
-                        elif sl == "isRequired":
-                            is_req = (sub.text or "").lower() == "true"
-                    if ch_name:
-                        chars.append({"name": ch_name, "required": is_req})
-                        if is_req:
+                    info = _parse_characteristic(ch)
+                    if info:
+                        ch_name = info["name"]
+                        chars.append({"name": ch_name, "required": info["required"]})
+                        if info["required"]:
                             required.append(ch_name)
+                        char_values.append(info)
 
-        if status and status.upper() == "INACTIVE":
+        if status and status.upper() in SKIP_STATUSES:
             elem.clear()
             continue
         if not code or not name:
@@ -265,6 +340,29 @@ def parse_ktru_xml_bytes(data: bytes, conn, max_insert: int | None = None) -> in
                 _norm(name),
             ),
         )
+        conn.execute("DELETE FROM ktru_char_values WHERE code=?", (code,))
+        for info in char_values:
+            for v in info["values"] or [{}]:
+                conn.execute(
+                    """
+                    INSERT INTO ktru_char_values
+                    (code, char_name, required, kind, value, vmin, vmax, min_op, max_op, unit, okei_code)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        code,
+                        info["name"],
+                        1 if info["required"] else 0,
+                        v.get("kind", "any"),
+                        v.get("value"),
+                        v.get("min"),
+                        v.get("max"),
+                        v.get("min_op"),
+                        v.get("max_op"),
+                        v.get("unit"),
+                        v.get("okei_code"),
+                    ),
+                )
         inserted += 1
         if inserted % 500 == 0:
             conn.commit()
@@ -297,10 +395,10 @@ def ingest_ktru(conn, outer_zip: Path, max_files: int = 40) -> int:
                 ]
                 if not actuals:
                     continue
-                xml_name = actuals[0]
-                print(f"  parsing {inner_name} -> {xml_name}")
-                data = z2.read(xml_name)
-                n = parse_ktru_xml_bytes(data, conn)
+                n = 0
+                for xml_name in actuals:
+                    print(f"  parsing {inner_name} -> {xml_name}")
+                    n += parse_ktru_xml_bytes(z2.read(xml_name), conn)
                 total += n
                 processed += 1
                 print(f"    +{n} positions (total {total})")
@@ -326,7 +424,7 @@ def seed_ktru_from_portal_if_empty(conn) -> int:
             """
             SELECT char_name FROM portal_chars
             WHERE domain=? AND category=? AND char_type LIKE '%Категореобразующ%'
-            LIMIT 10
+            ORDER BY char_name LIMIT 10
             """,
             (domain, name),
         ).fetchall()
@@ -334,7 +432,7 @@ def seed_ktru_from_portal_if_empty(conn) -> int:
         base = conn.execute(
             """
             SELECT char_name FROM portal_chars
-            WHERE domain=? AND category=? LIMIT 8
+            WHERE domain=? AND category=? ORDER BY id LIMIT 8
             """,
             (domain, name),
         ).fetchall()

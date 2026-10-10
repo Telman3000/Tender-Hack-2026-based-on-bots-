@@ -1,9 +1,10 @@
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
-DB_PATH = PROCESSED_DIR / "catalog.db"
+DB_PATH = Path(os.environ.get("CATALOG_DB", PROCESSED_DIR / "catalog.db"))
 FRONTEND_DIR = ROOT / "frontend"
 
 # OKPD2 prefixes for hackathon scope
@@ -25,7 +26,7 @@ DOMAIN_KEYWORDS = {
         "ботин", "кроссов", "халат", "комбинезон", "перчатк", "шапк",
     ],
     "tools": [
-        "инструмент", "молоток", "отвёртк", "отвертк", "дрель", "шуруповерт",
+        "инструмент", "молоток", "отвёртк", "отвертк", "дрел", "шуруповерт",
         "шуруповёрт", "ключ", "пила", "напильник", "пассатиж", "плоскогуб",
         "гаечн", "сверл", "стамеск", "рубанок", "тиски", "ножниц",
     ],

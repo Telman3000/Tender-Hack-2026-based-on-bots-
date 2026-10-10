@@ -10,24 +10,54 @@ class CharSource(str, Enum):
     KTRU = "ktru"
     PORTAL = "portal"
     NEW = "new"
-    USER = "user"
+    USER = "user"  # legacy, not emitted anymore
 
 
 class ParsedCharacteristic(BaseModel):
-    raw_name: str
-    canonical_name: str
+    # contract fields
+    name: str = ""
     value: str
     unit: str | None = None
-    source: CharSource = CharSource.USER
+    source: CharSource = CharSource.NEW
+    user_input: str | None = None
+    required: bool = False
+    allowed: list[str] | None = None  # enum values from KTRU (None for numeric / free)
+    min: float | None = None  # numeric range from KTRU, in `unit`
+    max: float | None = None
+    # legacy fields (kept for backward compatibility)
+    raw_name: str = ""
+    canonical_name: str = ""
     confidence: float = 1.0
     notes: str | None = None
 
 
 class Issue(BaseModel):
-    kind: str  # missing | typo | mismatch | unit | ambiguous
-    message: str
+    # contract fields
+    type: str = ""  # not_allowed | out_of_range | unit | mismatch | missing | typo (+ ambiguous, new_property)
     field: str | None = None
+    value: str | None = None
+    expected: str | None = None
+    suggestions: list[str] = Field(default_factory=list)
+    message: str
+    severity: str = "warning"  # error | warning
+    # legacy
+    kind: str = ""
     suggestion: str | None = None
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.type:
+            self.type = self.kind
+        if not self.kind:
+            self.kind = self.type
+        if self.suggestion and not self.suggestions:
+            self.suggestions = [self.suggestion]
+        if not self.suggestion and self.suggestions:
+            self.suggestion = self.suggestions[0]
+        self.suggestions = self.suggestions[:3]
+
+    @classmethod
+    def make(cls, type: str, message: str, **kw: Any) -> "Issue":
+        return cls(type=type, kind=type, message=message, **kw)
 
 
 class KtruCandidate(BaseModel):
@@ -40,18 +70,37 @@ class KtruCandidate(BaseModel):
 
 
 class NarrowingStep(BaseModel):
-    stage: str
+    # contract fields
+    step: int = 0
+    label: str = ""
     remaining: int
-    top: list[KtruCandidate]
+    removed: int = 0
+    reason: str | None = None
+    removed_codes: list[str] = Field(default_factory=list)
+    # legacy
+    stage: str = ""
+    top: list[KtruCandidate] = Field(default_factory=list)
     note: str | None = None
+
+
+class InputCharacteristic(BaseModel):
+    name: str
+    value: str | None = ""
+    unit: str | None = None
 
 
 class AnalyzeRequest(BaseModel):
     text: str = Field(..., min_length=1, description="Свободное описание товара")
-    domain_hint: str | None = Field(
-        default=None,
-        description="furniture | clothing | tools | null",
+    domain_hint: str | None = Field(default=None, description="furniture | clothing | tools | null")
+    characteristics: list[InputCharacteristic] | None = Field(
+        default=None, description="Явно заданные характеристики — перекрывают распознанные из текста"
     )
+
+
+class Candidate(BaseModel):
+    code: str
+    name: str
+    score: float
 
 
 class AnalyzeResponse(BaseModel):
@@ -62,6 +111,7 @@ class AnalyzeResponse(BaseModel):
     issues: list[Issue]
     narrowing: list[NarrowingStep]
     best_ktru: KtruCandidate | None
+    candidates: list[Candidate] = Field(default_factory=list)
     status: str  # ok | need_more | ambiguous | error
     next_steps: list[str] = Field(default_factory=list)
     debug: dict[str, Any] = Field(default_factory=dict)

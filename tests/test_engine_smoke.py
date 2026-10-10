@@ -35,3 +35,25 @@ def test_analyze_incomplete():
         assert res.narrowing or res.issues
     finally:
         eng.close()
+
+
+@pytest.mark.skipif(not DB_PATH.exists(), reason="catalog.db not built yet")
+def test_contract_and_errors_block_ok():
+    eng = CatalogEngine()
+    try:
+        res = eng.analyze(AnalyzeRequest(text="Стол письменный высота 820 кг"))
+        assert res.status != "ok"
+        assert any(i.severity == "error" for i in res.issues)
+        assert res.narrowing[0].label == "Домен" and res.narrowing[0].remaining > 0
+        assert "elapsed_ms" in res.debug
+        res2 = eng.analyze(AnalyzeRequest(
+            text="Стол письменный",
+            characteristics=[{"name": "Высота", "value": "750", "unit": "мм"},
+                             {"name": "Моя доп. строка", "value": ""}],
+        ))
+        names = {c.name for c in res2.characteristics} | {c.raw_name for c in res2.characteristics}
+        assert "Моя доп. строка" in names
+        for c in res2.characteristics:
+            assert c.allowed is None or isinstance(c.allowed, list)
+    finally:
+        eng.close()

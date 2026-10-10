@@ -21,10 +21,17 @@ _KV_COLON = re.compile(
 
 _NUM_UNIT = re.compile(
     r"(?P<label>высота|ширина|глубина|длина|масса|вес|толщина|диаметр|мощность|"
-    r"объ[её]м|размер)\s+"
+    r"напряжение|объ[её]м|размер)\s+"
     r"(?P<value>\d+(?:[.,]\d+)?)\s*"
-    r"(?P<unit>мм|см|м|кг|г|гр|шт|л|Вт|вт|В|А)?",
+    r"(?P<unit>миллиметр\w*|сантиметр\w*|метр\w*|килограмм\w*|грамм\w*|литр\w*|ватт\w*|вольт\w*|"
+    r"мм|см|м|кг|г|гр|шт|мл|л|кВт|Вт|вт|В|А|%)?(?![а-яa-z])",
     re.IGNORECASE,
+)
+
+_MATS = r"хлопок|хлопка|полиэстер|полиэстера|шерсть|шерсти|вискоза|вискозы|эластан|эластана|лен|льна|нейлон|нейлона|полиамид|акрил"
+_PERCENT = re.compile(
+    rf"(?:(?P<m1>{_MATS})\s*(?P<p1>\d+(?:[.,]\d+)?)\s*%|(?P<p2>\d+(?:[.,]\d+)?)\s*%\s*(?P<m2>{_MATS}))",
+    re.I,
 )
 
 _COLOR = re.compile(
@@ -39,30 +46,95 @@ _MATERIAL = re.compile(
 )
 
 
+_WORD = re.compile(r"[a-zа-яё0-9]+", re.I)
+
+# tokens that flip a keyword away from our scope ("музыкальных инструментов")
+_NEGATIVE = {"tools": ("музыкальн",)}
+
+_CHAR_WORDS = (
+    "высота|ширина|глубина|длина|масса|вес|толщина|диаметр|мощность|напряжение|"
+    "объем|объём|размер|материал|цвет|тип|вид|состав|емкость|ёмкость|количество|"
+    "артикул|модель|производитель|бренд|страна"
+)
+_HEAD_CUT = re.compile(
+    rf"[|:;,(]|\b(?:{_CHAR_WORDS})\b|\b(?:из|для|с|со|на)\b\s+\S+\s*\d|\d",
+    re.I,
+)
+
+
+_TR = [("shch", "щ"), ("sch", "щ"), ("yo", "ё"), ("zh", "ж"), ("kh", "х"), ("ts", "ц"), ("ch", "ч"),
+       ("sh", "ш"), ("yu", "ю"), ("ya", "я"), ("yj", "ый"), ("ij", "ий"), ("iy", "ий"), ("yy", "ый"),
+       ("a", "а"), ("b", "б"), ("v", "в"), ("g", "г"), ("d", "д"), ("e", "е"), ("z", "з"), ("i", "и"),
+       ("j", "й"), ("k", "к"), ("l", "л"), ("m", "м"), ("n", "н"), ("o", "о"), ("p", "п"), ("r", "р"),
+       ("s", "с"), ("t", "т"), ("u", "у"), ("f", "ф"), ("h", "х"), ("c", "ц"), ("y", "ы"), ("w", "в"), ("x", "кс")]
+_UNIT_LAT = {"mm": "мм", "cm": "см", "m": "м", "kg": "кг", "g": "г", "vt": "Вт", "w": "Вт", "v": "В", "l": "л"}
+
+
+def translit_if_latin(text: str) -> str:
+    """'Stol ofisnyj LDSP 1200x750 mm' -> 'стол офисный ЛДСП 1200x750 мм' (only for text without Cyrillic)."""
+    if re.search(r"[а-яё]", text, re.I) or not re.search(r"[a-z]{3,}", text, re.I):
+        return text
+    out = []
+    for w in re.split(r"(\s+)", text):
+        lw = w.lower()
+        if not lw.strip() or not re.fullmatch(r"[a-z]+", lw):
+            out.append(w if not re.fullmatch(r"\d+x\d+", lw) else lw)
+            continue
+        if lw in _UNIT_LAT:
+            out.append(_UNIT_LAT[lw])
+            continue
+        if w.isupper() and len(w) <= 5:  # abbreviations: LDSP -> ЛДСП
+            r = lw
+            for a, b in _TR:
+                r = r.replace(a, b)
+            out.append(r.upper())
+            continue
+        r = lw
+        for a, b in _TR:
+            r = r.replace(a, b)
+        out.append(r)
+    return "".join(out)
+
+
+def words(text: str) -> list[str]:
+    return [w.lower().replace("ё", "е") for w in _WORD.findall(text or "")]
+
+
+def domain_scores(text: str) -> dict[str, int]:
+    """Keyword stems matched at word start only ('стол' ≠ 'настольный', 'ключ' ≠ 'включая')."""
+    ws = words(text)
+    scores: dict[str, int] = {}
+    for domain, kws in DOMAIN_KEYWORDS.items():
+        kws_n = [k.replace("ё", "е") for k in kws]
+        n = sum(1 for w in ws for k in kws_n if w.startswith(k))
+        neg = _NEGATIVE.get(domain, ())
+        if neg and any(w.startswith(x) for w in ws for x in neg):
+            n = 0
+        scores[domain] = n
+    return scores
+
+
 def detect_domain(text: str, hint: str | None = None) -> str | None:
     if hint and hint in DOMAIN_KEYWORDS:
         return hint
-    low = text.lower()
-    scores = {
-        domain: sum(1 for kw in kws if kw in low)
-        for domain, kws in DOMAIN_KEYWORDS.items()
-    }
-    best = max(scores, key=scores.get)
-    return best if scores[best] > 0 else None
+    head = guess_product_name(text)
+    for chunk in (head, text):
+        scores = domain_scores(chunk)
+        best = max(scores, key=scores.get)
+        if scores[best] > 0:
+            return best
+    return None
 
 
 def guess_product_name(text: str) -> str:
-    """Take leading chunk before first clear characteristic marker."""
-    cut = re.split(
-        r"[|:;]|\bвысота\b|\bширина\b|\bматериал\b|\bцвет\b|\bвес\b|\bмасса\b",
-        text,
-        maxsplit=1,
-        flags=re.I,
-    )
-    head = cut[0].strip(" ,.-")
-    if len(head) > 120:
-        head = head[:120].rsplit(" ", 1)[0]
-    return head or text[:80]
+    """Head noun phrase: text before the first characteristic marker / number, max 6 words."""
+    text = re.sub(r"\s+", " ", (text or "").strip())
+    head = _HEAD_CUT.split(text, maxsplit=1)[0].strip(" ,.-")
+    ws = head.split()
+    if len(ws) > 6:
+        head = " ".join(ws[:6])
+    head = re.sub(r"(?:\s+(?:из|для|с|со|на|и|в))+$", "", head, flags=re.I)
+    return head or " ".join(text.split()[:4])
 
 
 def canonicalize_name(name: str) -> str:
@@ -92,7 +164,7 @@ def parse_free_text(text: str) -> tuple[str, list[RawKV]]:
             return
         seen.add(key)
         m = re.match(
-            r"^(?P<v>\d+(?:[.,]\d+)?)\s*(?P<u>мм|см|м|кг|г|гр|шт|л|Вт|вт|В|А)$",
+            r"^(?P<v>\d+(?:[.,]\d+)?)\s*(?P<u>мм|см|м|кг|г|гр|шт|мл|л|кВт|Вт|вт|В|А|%)$",
             value,
             re.I,
         )
@@ -123,6 +195,10 @@ def parse_free_text(text: str) -> tuple[str, list[RawKV]]:
 
     for m in _NUM_UNIT.finditer(text):
         add(m.group("label"), m.group("value"), m.group("unit"))
+
+    for m in _PERCENT.finditer(text):
+        mat = (m.group("m1") or m.group("m2") or "").strip()
+        add(f"Содержание {mat.lower()}", m.group("p1") or m.group("p2"), "%")
 
     for m in _COLOR.finditer(text):
         add("Цвет", m.group("value"))
