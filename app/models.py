@@ -29,6 +29,7 @@ class ParsedCharacteristic(BaseModel):
     canonical_name: str = ""
     confidence: float = 1.0
     notes: str | None = None
+    span: list[int] | None = None  # [start, end) in the original text when the value came from it
 
 
 class Issue(BaseModel):
@@ -40,6 +41,7 @@ class Issue(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     message: str
     severity: str = "warning"  # error | warning
+    span: list[int] | None = None  # [start, end) in the original text, or null
     # legacy
     kind: str = ""
     suggestion: str | None = None
@@ -104,6 +106,29 @@ class AnalyzeRequest(BaseModel):
     )
 
 
+class Correction(BaseModel):
+    field: str | None = None
+    kind: Literal["unit", "autofix", "typo", "translit"]
+    from_: str = Field(alias="from")
+    to: str
+    span: list[int] | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class NextStep(BaseModel):
+    text: str
+    field: str | None = None
+    required: bool = False
+
+
+class Completeness(BaseModel):
+    required_total: int = 0
+    required_filled: int = 0
+    optional_total: int = 0
+    optional_filled: int = 0
+
+
 class Candidate(BaseModel):
     code: str
     name: str
@@ -119,6 +144,11 @@ class AnalyzeResponse(BaseModel):
     narrowing: list[NarrowingStep]
     best_ktru: KtruCandidate | None
     candidates: list[Candidate] = Field(default_factory=list)
-    status: str  # ok | need_more | ambiguous | error
-    next_steps: list[str] = Field(default_factory=list)
+    status: str  # legacy: ok | need_more | ambiguous | error | not_found
+    code_status: Literal["determined", "ambiguous", "not_found"] = "not_found"
+    card_status: Literal["complete", "incomplete", "invalid"] = "incomplete"
+    completeness: Completeness = Field(default_factory=Completeness)
+    corrections: list[Correction] = Field(default_factory=list)
+    next_steps: list[str] = Field(default_factory=list)  # required steps only
+    next_steps_detail: list[NextStep] = Field(default_factory=list)
     debug: dict[str, Any] = Field(default_factory=dict)

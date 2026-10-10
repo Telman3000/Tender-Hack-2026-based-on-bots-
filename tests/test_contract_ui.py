@@ -226,3 +226,40 @@ def test_next_steps_match_table(text):
         assert n in rows and not rows[n]
     assert not any(s.startswith("Уточните: ") for s in r.next_steps)
 
+
+@needs_db
+def test_code_and_card_status():
+    e = CatalogEngine()
+    r = e.analyze(AnalyzeRequest(text="Стол офисный ЛДСП"))
+    assert r.code_status == "determined" and r.card_status == "incomplete"
+    c = r.completeness
+    assert c.required_total == sum(1 for x in r.characteristics if x.required)
+    assert c.required_filled < c.required_total
+    assert r.next_steps and all(d.required for d in r.next_steps_detail if d.text in r.next_steps)
+    assert set(r.next_steps) == {d.text for d in r.next_steps_detail if d.required}
+    r = e.analyze(AnalyzeRequest(text="абвгд ёжзий"))
+    assert r.code_status == "not_found" and r.status == "not_found"
+    r = e.analyze(AnalyzeRequest(text="Ключ гаечный 170х190 мм длина 27 м"))
+    assert r.card_status == "invalid"
+
+
+@needs_db
+def test_spans_and_corrections():
+    text = "Ключ гаечный длина 27 см"
+    r = CatalogEngine().analyze(AnalyzeRequest(text=text))
+    rows = [c for c in r.characteristics if c.value and c.span]
+    assert rows and all(0 <= c.span[0] < c.span[1] <= len(text) for c in rows)
+    kinds = {(x.kind, x.from_, x.to) for x in r.corrections}
+    assert any(k == "unit" and "27" in f and "270" in t for k, f, t in kinds), kinds
+    for x in r.corrections:
+        if x.span:
+            assert text[x.span[0]:x.span[1]].lower() == x.from_.lower()
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Kurtka zimnyaya muzhskaya"))
+    assert any(x.kind == "translit" for x in r.corrections)
+
+
+def test_correction_serializes_from():
+    from app.models import Correction
+    d = Correction(kind="unit", from_="27 см", to="270 мм").model_dump(by_alias=True)
+    assert d["from"] == "27 см"
+

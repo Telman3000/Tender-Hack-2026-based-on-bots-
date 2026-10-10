@@ -87,6 +87,7 @@ def unify_characteristics(
     best: KtruEntry | None,
     user_rows: set[str] | None = None,
     text: str = "",
+    corrections: list | None = None,
 ) -> tuple[list[ParsedCharacteristic], list[Issue]]:
     issues: list[Issue] = []
     out: list[ParsedCharacteristic] = []
@@ -130,6 +131,8 @@ def unify_characteristics(
                 if r.issue:
                     issues.append(r.issue)
                 if r.ok:
+                    if corrections is not None and r.converted and item.unit:
+                        corrections.append(("unit", spec.name, f"{value} {item.unit}", f"{r.value} {r.unit}"))
                     pc.value, pc.unit = r.value, (r.unit or pc.unit)
             used.add(spec.name.lower())
         else:

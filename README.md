@@ -108,12 +108,12 @@ UI: http://127.0.0.1:8000/ , API: `POST http://127.0.0.1:8000/api/analyze`, Swag
 docker compose up --build      # http://127.0.0.1:8000/
 ```
 
-**Не проверено:** Docker Desktop на тестовой машине установлен, но не запущен; образ не собирался.
+**Не проверено:** Docker Desktop на тестовой машине установлен, но движок не был запущен (попытка запуска прервана), поэтому образ не собирался и нагрузочный тест контейнера не выполнялся.
 
 ## Проверка
 
 ```bash
-python -m pytest -q            # 40 passed (без catalog.db часть тестов пропускается)
+python -m pytest -q            # 43 passed (без catalog.db часть тестов пропускается)
 curl -s -X POST http://127.0.0.1:8000/api/analyze -H "Content-Type: application/json" \
      -d '{"text":"Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"}'
 python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и qa/summary.md
@@ -127,7 +127,7 @@ starlette.testclient is deprecated` — оно из FastAPI/Starlette TestClient
 (файл в UTF-8). Запрос: `{text, characteristics?: [{name, value, unit}], domain_hint?}`
 (`domain_hint`: `furniture` | `clothing` | `tools`, иное значение → HTTP 422).
 
-Сокращённый пример ответа на этот запрос (реальный ответ, из массивов оставлены первые элементы):
+Сокращённый пример ответа на этот запрос (реальный ответ; выборочные элементы; полный список полей — в [docs/api.md](docs/api.md)):
 
 ```json
 {
@@ -159,7 +159,23 @@ starlette.testclient is deprecated` — оно из FastAPI/Starlette TestClient
 }
 ```
 
-Статус: `not_found` > `error` > `need_more` > `ambiguous` > `ok`. Время ответа: медиана ~50 мс, в UI 70–200 мс.
+Статусы: `code_status` (determined | ambiguous | not_found) — уверенность в коде,
+`card_status` (complete | incomplete | invalid) — заполненность карточки, плюс `completeness`,
+`corrections`, `span`, `next_steps_detail` (см. [docs/api.md](docs/api.md)). Старое поле `status`
+сохранено: `not_found` > `error` > `need_more` > `ambiguous` > `ok`. Время ответа: медиана ~50 мс, в UI 70–200 мс.
+
+Нагрузочный тест (`python scripts/load_test.py --url http://127.0.0.1:8802 --n 50 --concurrency 50 --pid <PID>`,
+10 типовых запросов, Windows, Python 3.11, локальный uvicorn):
+
+| Конфигурация | Запросов / параллельно | p50 | p95 | max | Пропускная способность | RSS до → после |
+|---|---|---|---|---|---|---|
+| 1 воркер | 50 / 50 | 4.2 с | 5.7 с | 5.7 с | 8.7 запр/с | 134 → 146 МБ |
+| 1 воркер | 200 / 50 | 4.4 с | 5.5 с | 6.6 с | 12.2 запр/с | 146 → 153 МБ |
+| `--workers 4` | 50 / 50 | 2.2 с | 2.3 с | 2.3 с | 21.4 запр/с | 533 → 556 МБ (все процессы) |
+
+Один запрос обрабатывается ~50–100 мс CPU; при 50 одновременных запросах они встают в очередь,
+поэтому задержка растёт линейно. Для нескольких пользователей запускайте `--workers N`
+(каждый воркер держит свою копию каталога, ~130 МБ). RSS считается через `psutil` (если установлен).
 
 QA (45 кейсов): верный код в топ-1 98%, в топ-3 100%.
 
