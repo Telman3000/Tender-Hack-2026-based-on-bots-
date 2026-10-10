@@ -22,7 +22,7 @@ _KV_COLON = re.compile(
 _NUM_UNIT = re.compile(
     r"(?P<label>высота|ширина|глубина|длина|масса|вес|толщина|диаметр|мощность|"
     r"напряжение|объ[её]м|размер|рост)\s+"
-    r"(?P<value>\d+(?:[.,]\d+)?)\s*"
+    r"(?P<value>[-−–]?\d+(?:[.,]\d+)?)\s*"
     r"(?P<unit>миллиметр\w*|сантиметр\w*|метр\w*|килограмм\w*|грамм\w*|литр\w*|ватт\w*|вольт\w*|"
     r"мм|см|м|кг|г|гр|шт|мл|л|кВт|Вт|вт|В|А|%)?(?![а-яa-z\d])",
     re.IGNORECASE,
@@ -94,6 +94,22 @@ def translit_if_latin(text: str) -> str:
             r = r.replace(a, b)
         out.append(r)
     return "".join(out)
+
+
+_HTML_BLOCK = re.compile(r"<(script|style)\b[^>]*>.*?</\1\s*>", re.I | re.S)
+_HTML_TAG = re.compile(r"</?[a-zA-Z!][^<>]*>")
+
+
+def strip_html(text: str) -> str:
+    """Replace HTML tags (and <script>/<style> bodies) by spaces of the same length.
+
+    The result has exactly the same length as the input, so every span computed on it is also a valid
+    span in the original text.
+    """
+    if not text or "<" not in text:
+        return text
+    blank = lambda m: " " * (m.end() - m.start())  # noqa: E731
+    return _HTML_TAG.sub(blank, _HTML_BLOCK.sub(blank, text))
 
 
 def words(text: str) -> list[str]:
@@ -184,6 +200,7 @@ def parse_free_text(text: str, domain: str | None = None) -> tuple[str, list[Raw
     def add(name: str, value: str, unit: str | None = None) -> None:
         name = name.strip()
         value = value.strip(" .;")
+        value = re.sub(r"^[−–](?=\d)", "-", value)  # minus sign variants: a negative value is never dropped
         if not name or not value:
             return
         key = (name.lower(), value.lower())
@@ -191,7 +208,7 @@ def parse_free_text(text: str, domain: str | None = None) -> tuple[str, list[Raw
             return
         seen.add(key)
         m = re.match(
-            r"^(?P<v>\d+(?:[.,]\d+)?)\s*(?P<u>мм|см|м|кг|г|гр|шт|мл|л|кВт|Вт|вт|В|А|%)$",
+            r"^(?P<v>-?\d+(?:[.,]\d+)?)\s*(?P<u>мм|см|м|кг|г|гр|шт|мл|л|кВт|Вт|вт|В|А|%)$",
             value,
             re.I,
         )

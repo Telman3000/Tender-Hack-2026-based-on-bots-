@@ -30,6 +30,7 @@ class ParsedCharacteristic(BaseModel):
     confidence: float = 1.0
     notes: str | None = None
     span: list[int] | None = None  # [start, end) in the original text when the value came from it
+    suspicious: bool = False  # the characteristic does not fit the item type (see issue type=mismatch)
 
 
 class Issue(BaseModel):
@@ -129,6 +130,34 @@ class Completeness(BaseModel):
     optional_filled: int = 0
 
 
+class MissingCharacteristic(BaseModel):
+    """A characteristic of the chosen KTRU code that is not filled yet."""
+    name: str
+    required: bool
+    allowed: list[str] | None = None  # enum values from KTRU
+    min: float | None = None
+    max: float | None = None
+    unit: str | None = None
+
+
+class FillCounter(BaseModel):
+    """«заполнено X из Y» over the characteristics of the chosen KTRU code."""
+    filled: int = 0
+    total: int = 0
+    required_filled: int = 0
+    required_total: int = 0
+    text: str = ""
+
+
+class Question(BaseModel):
+    """Asked only when the choice cannot be made for the user (several names / a required enum splits codes)."""
+    field: str
+    reason: str
+    options: list[str] = Field(default_factory=list)  # <= 6, values from KTRU only
+    remaining_by_option: dict[str, int] = Field(default_factory=dict)  # codes left after choosing the option
+    candidates_now: int = 0
+
+
 class Candidate(BaseModel):
     code: str
     name: str
@@ -151,4 +180,9 @@ class AnalyzeResponse(BaseModel):
     corrections: list[Correction] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)  # required steps only
     next_steps_detail: list[NextStep] = Field(default_factory=list)
+    missing_characteristics: list[MissingCharacteristic] = Field(default_factory=list)  # required first
+    fill: FillCounter = Field(default_factory=FillCounter)
+    question: Question | None = None
+    out_of_scope: bool = False
+    message: str | None = None
     debug: dict[str, Any] = Field(default_factory=dict)
