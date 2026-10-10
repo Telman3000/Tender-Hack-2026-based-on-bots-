@@ -1,159 +1,503 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 const DEBOUNCE_MS = 600;
-const SOURCE_LABELS = { ktru: "КТРУ", portal: "Портал", new: "Новая" };
-const STATUS_LABELS = {
-  ok: "Код КТРУ определён",
-  need_more: "Нужны уточнения",
-  ambiguous: "Несколько подходящих кодов",
-  not_found: "Товар не распознан",
-  error: "Есть ошибки в характеристиках",
+const HISTORY_LIMIT = 50;
+const DOMAINS = { furniture: "мебель", clothing: "одежда", tools: "инструменты" };
+const ORIGINS = { ktru: "КТРУ", portal: "Портал", new: "дополнение" };
+const MATCH = {
+  MATCHED: ["код определён", "good"],
+  NEEDS_CLARIFICATION: ["нужно уточнение", "mid"],
+  INPUT_CONFLICT: ["противоречие во вводе", "bad"],
+  NO_MATCH_IN_SNAPSHOT: ["нет совпадения в снимке КТРУ", "bad"],
 };
-const STEP_LABELS = { initial: "Все коды", domain: "Категория", okpd2: "ОКПД2", name: "Наименование" };
+const CARD = {
+  READY: ["готова", "good"],
+  INCOMPLETE: ["неполная", "mid"],
+  HAS_UNVERIFIED_EXTRAS: ["есть непроверенные дополнения", "extra"],
+};
+const KINDS = { unit: "единицы", autofix: "автоисправление", typo: "опечатка", translit: "транслит" };
+const FIXABLE = new Set(["typo", "autofix", "translit"]);
 
-const state = { chars: [], data: null, seq: 0, timer: null, dirty: new Map(), textNote: false, origText: null, baseText: null, lastKey: null };
-const statusLabel = (st) => STATUS_LABELS[st] || (st ? "Статус: " + st : "");
+const state = {
+  data: null,
+  chars: [],
+  seq: 0,
+  timer: null,
+  over: new Map(),
+  overText: null,
+  history: [],
+  done: null,
+  restoring: null,
+  focus: null,
+  answer: null,
+  prevSearch: null,
+};
 
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-}
-const norm = (s) => String(s ?? "").trim().toLowerCase();
+const esc = (s) => String(s ?? "")
+  .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+const norm = (s) => String(s ?? "").trim().toLowerCase().replaceAll("ё", "е");
+const filled = (c) => String(c.value ?? "").trim() !== "";
+const withUnit = (c) => [c.value, c.unit].filter((x) => String(x ?? "").trim()).join(" ");
 
-/* ---------- normalization (new contract + old MVP fields) ---------- */
-function normSource(src) {
-  const s = norm(src);
-  if (s === "ktru" || s === "portal" || s === "new") return s;
-  return "new"; // старое значение "user" и неизвестные — новая характеристика
+function spanOf(x) {
+  const s = x && x.span;
+  if (Array.isArray(s) && s.length >= 2) return { start: +s[0], end: +s[1] };
+  if (s && s.start != null && s.end != null) return { start: +s.start, end: +s.end };
+  return null;
 }
 function normChar(c) {
-  const allowed = c.allowed_values || c.allowed || c.options || null;
+  const allowed = c.allowed_values || c.allowed || null;
+  const known = (v) => v === "ktru" || v === "portal" || v === "new";
   return {
-    name: c.name ?? c.canonical_name ?? "",
-    user_input: c.user_input ?? c.raw_name ?? "",
+    name: c.name || c.canonical_name || "",
+    user_input: c.user_input || "",
     value: c.value ?? "",
     unit: c.unit ?? "",
-    source: normSource(c.source),
+    origin: known(c.origin) ? c.origin : known(c.source) ? c.source : "new",
     required: !!c.required,
     allowed: Array.isArray(allowed) && allowed.length ? allowed.map(String) : null,
-    min: c.min ?? (c.range ? c.range.min : undefined) ?? undefined,
-    max: c.max ?? (c.range ? c.range.max : undefined) ?? undefined,
+    min: c.min ?? undefined,
+    max: c.max ?? undefined,
+    span: spanOf(c),
+    polarity: c.polarity || "positive",
+    edited: false,
   };
 }
 function normIssue(i) {
   let suggestions = Array.isArray(i.suggestions) ? i.suggestions : [];
   if (!suggestions.length && i.suggestion) suggestions = [i.suggestion];
+  const type = i.type || i.kind || "warning";
   return {
-    type: i.type || i.kind || "warning",
+    type,
     field: i.field ?? null,
     value: i.value ?? "",
     expected: i.expected ?? "",
     suggestions: suggestions.slice(0, 3).map(String),
     message: i.message || "",
-    severity: i.severity || ((i.type || i.kind) === "missing" ? "warning" : "error"),
+    severity: i.severity || (type === "missing" ? "warning" : "error"),
+    span: spanOf(i),
   };
 }
 function normSteps(data) {
-  return (data.narrowing || []).map((s, idx) => {
-    let label = s.label;
-    const step = String(s.stage || (typeof s.step === "string" ? s.step : "") || "");
-    if (!label) {
-      if (step.startsWith("char:")) label = "Характеристика: " + step.slice(5);
-      else label = STEP_LABELS[step] || step || (idx === 0 ? "Все коды" : `Шаг ${idx}`);
-    }
-    return {
-      label,
-      remaining: Number(s.remaining) || 0,
-      removed: s.removed ?? null,
-      reason: s.reason || s.note || "",
-      removed_codes: s.removed_codes || [],
-      top: s.top || [],
-    };
-  });
-}
-function getCandidates(data, steps) {
-  if (Array.isArray(data.candidates) && data.candidates.length) return data.candidates;
-  const last = steps[steps.length - 1];
-  return last && last.top ? last.top : [];
+  return (data.narrowing || []).map((s, k) => ({
+    label: s.label || s.stage || `Шаг ${k + 1}`,
+    remaining: Number(s.remaining) || 0,
+    removed: Number(s.removed) || 0,
+    reason: s.reason || s.note || "",
+  }));
 }
 
-/* ---------- API ---------- */
-function schedule(withChars) {
-  clearTimeout(state.timer);
-  state.timer = setTimeout(() => analyze(withChars), DEBOUNCE_MS);
+function matchOf(d) {
+  if (MATCH[d.match_status]) return d.match_status;
+  if (d.status === "ok") return "MATCHED";
+  if (d.status === "not_found") return "NO_MATCH_IN_SNAPSHOT";
+  if ((d.issues || []).some((i) => String(i.message || "").startsWith("INPUT_CONFLICT"))) return "INPUT_CONFLICT";
+  return "NEEDS_CLARIFICATION";
 }
-async function analyze(withChars, fromButton) {
-  const text = $("text").value.trim();
-  if (!text) return;
-  if (!withChars) checkNewText(fromButton);
-  const seq = ++state.seq;
-  $("status").className = "status idle";
-  $("status").textContent = "Проверяем…";
-  const body = { text, domain_hint: $("domain").value || null };
-  // withChars: правка таблицы -> вся текущая таблица; правка текста -> только «грязные» строки
-  // (правки таблицы имеют приоритет над текстом, пока их не сбросили)
-  const toPayload = (c) => ({ name: c.name.trim(), value: String(c.value ?? ""), unit: c.unit || null });
-  if (withChars) {
-    body.characteristics = state.chars.filter((c) => c.name.trim()).map(toPayload);
-  } else if (state.dirty.size) {
-    body.characteristics = [...state.dirty.values()].filter((c) => c.name.trim()).map(toPayload);
+function cardOf(d) {
+  if (CARD[d.card_status]) return d.card_status;
+  if (d.card_status === "complete") return "READY";
+  if (d.card_status === "incomplete" || d.card_status === "invalid") return "INCOMPLETE";
+  if (state.chars.some((c) => c.required && !filled(c))) return "INCOMPLETE";
+  if (state.chars.some((c) => c.origin === "new" && filled(c))) return "HAS_UNVERIFIED_EXTRAS";
+  return "READY";
+}
+function searchOf(d, steps) {
+  const s = d.search;
+  if (s && (s.area_size || s.compatible_count || s.checked_count)) {
+    return { area: s.area_size, checked: s.checked_count, compatible: s.compatible_count, full: s.completeness === "full", domain: s.domain || d.detected_domain };
   }
+  if (!steps.length) return null;
+  return { area: steps[0].remaining, checked: null, compatible: steps[steps.length - 1].remaining, full: false, domain: d.detected_domain };
+}
+
+function snapshot() {
+  return {
+    text: $("text").value.trim(),
+    domain: $("domain").value,
+    over: [...state.over.values()].map((o) => ({ name: o.name, value: String(o.value ?? ""), unit: o.unit || "" })),
+  };
+}
+function sameSnap(a, b) {
+  return !!a && !!b && a.text === b.text && a.domain === b.domain && JSON.stringify(a.over) === JSON.stringify(b.over);
+}
+function similarity(a, b) {
+  a = norm(a); b = norm(b);
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  const grams = (s) => { const m = new Map(); for (let i = 0; i < s.length - 1; i++) { const g = s.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
+  const A = grams(a), B = grams(b);
+  let common = 0;
+  for (const [g, n] of A) common += Math.min(n, B.get(g) || 0);
+  return (2 * common) / (a.length + b.length - 2);
+}
+function dropOverrides() {
+  state.over.clear();
+  state.overText = null;
+}
+
+function schedule() {
+  clearTimeout(state.timer);
+  state.timer = setTimeout(analyze, DEBOUNCE_MS);
+}
+function setBusy(on) {
+  const res = $("result");
+  res.classList.toggle("stale", on && !!state.data);
+  res.setAttribute("aria-busy", on ? "true" : "false");
+  if (on) {
+    $("status").className = "status busy";
+    $("status").textContent = "Проверяем…";
+  }
+}
+async function health() {
+  try {
+    const r = await fetch("/api/health", { cache: "no-store" });
+    return r.ok ? await r.json() : null;
+  } catch (_) {
+    return null;
+  }
+}
+function looksLikeDbFailure(d) {
+  const noSearch = !(d.search && d.search.area_size) && !(d.narrowing || []).length;
+  return noSearch && (d.match_status === "NO_MATCH_IN_SNAPSHOT" || d.status === "error" || d.status === "not_found");
+}
+async function analyze() {
+  clearTimeout(state.timer);
+  if (state.over.size && state.overText !== null && similarity($("text").value, state.overText) < 0.5) dropOverrides();
+  const snap = snapshot();
+  if (!snap.text) return;
+  const seq = ++state.seq;
+  setBusy(true);
+  const body = { text: snap.text, domain_hint: snap.domain || null };
+  if (snap.over.length) body.characteristics = snap.over.map((o) => ({ name: o.name, value: o.value, unit: o.unit || null }));
+  let data = null, problem = null;
   try {
     const res = await fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
-    if (seq !== state.seq) return; // устаревший ответ
-    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Ошибка API");
-    state.sentText = text;
-    render(data);
-  } catch (e) {
-    if (seq !== state.seq) return;
-    $("status").className = "status error";
-    $("status").textContent = "Ошибка";
-    $("result").className = "result";
-    $("result").innerHTML = `<div class="issue error">${escapeHtml(e.message)}</div>`;
+    data = await res.json().catch(() => null);
+    if (!res.ok || !data) problem = data && typeof data.detail === "string" ? data.detail : `сервер ответил ${res.status}`;
+  } catch (_) {
+    problem = "сервер не отвечает";
   }
+  if (!problem && looksLikeDbFailure(data)) {
+    const h = await health();
+    if (!h || !h.db_ready) problem = "база КТРУ не загружена";
+  }
+  if (seq !== state.seq || !sameSnap(snap, snapshot())) return;
+  setBusy(false);
+  if (problem) {
+    showTech(problem);
+    return;
+  }
+  commit(snap);
+  render(data);
+  followAnswer();
 }
 
+function commit(snap) {
+  if (state.restoring && sameSnap(state.restoring, snap)) state.restoring = null;
+  else if (state.done && !sameSnap(state.done, snap)) state.history.push(state.done);
+  state.restoring = null;
+  if (state.history.length > HISTORY_LIMIT) state.history.shift();
+  state.done = snap;
+  refreshUndo();
+}
+function refreshUndo() {
+  const btn = $("undo");
+  const prev = state.history[state.history.length - 1];
+  btn.disabled = !prev;
+  btn.title = prev ? `Вернуть: «${prev.text}»` : "";
+}
+function undo() {
+  const prev = state.history.pop();
+  refreshUndo();
+  if (!prev) return;
+  $("text").value = prev.text;
+  $("domain").value = prev.domain;
+  state.over = new Map(prev.over.map((o) => [norm(o.name), { ...o }]));
+  state.overText = state.over.size ? prev.text : null;
+  state.answer = null;
+  state.restoring = prev;
+  analyze();
+}
 
-/* ---------- статусы кода и карточки (новый контракт + fallback) ---------- */
-const CODE_LABELS = { determined: "определён", ambiguous: "несколько вариантов", not_found: "не найден" };
-const KIND_LABELS = { unit: "единицы", autofix: "автоисправление", typo: "опечатка", translit: "транслит" };
-function codeStatus(data) {
-  let cs = data.code_status;
-  if (cs === "found") cs = "determined";
-  if (CODE_LABELS[cs]) return cs;
-  if (data.status === "not_found" || !data.best_ktru) return "not_found";
-  if (data.status === "ambiguous") return "ambiguous";
-  return "determined";
+function showTech(message) {
+  state.data = null;
+  state.chars = [];
+  state.focus = null;
+  $("source").hidden = true;
+  $("status").className = "status tech";
+  $("status").textContent = `Техническая ошибка: ${message}`;
+  $("result").className = "result";
+  $("result").innerHTML = `<div class="summary" id="summary"><div class="sbadges">
+      <span class="sbadge bad" id="matchBadge" data-status="TECHNICAL_ERROR"><span class="cap">Подбор</span>техническая ошибка</span>
+      <span class="sbadge off" id="cardBadge" data-status="NOT_CHECKED"><span class="cap">Карточка</span>не проверена</span></div></div>
+    <div class="block tech" id="techError"><h2>Сервис не смог выполнить проверку</h2>
+      <div>${esc(message)}.</div>
+      <div class="muted">Это сбой сервиса, а не результат поиска: про наличие кода КТРУ ничего не известно. Повторите запрос; если ошибка повторяется, проверьте, что база собрана и сервер запущен.</div></div>`;
 }
-function completenessOf(data) {
-  const c = data.completeness;
-  if (c && c.required_total != null) return c;
-  const filled = (x) => String(x.value ?? "").trim() !== "";
-  const req = state.chars.filter((x) => x.required), opt = state.chars.filter((x) => !x.required);
-  return { required_total: req.length, required_filled: req.filter(filled).length, optional_total: opt.length, optional_filled: opt.filter(filled).length };
+
+function render(data) {
+  if (state.data && state.data.search) state.prevSearch = { text: state.data.input_text, ...state.data.search };
+  state.data = data;
+  state.chars = (data.characteristics || []).map(normChar);
+  const src = String(data.input_text ?? "");
+  for (const c of state.chars) if (!c.span && c.user_input) c.span = findSpan(src, c.user_input);
+  for (const o of state.over.values()) {
+    const row = state.chars.find((c) => norm(c.name) === norm(o.name));
+    if (row) { row.value = o.value; row.unit = o.unit; row.edited = true; }
+  }
+  if (state.focus && !state.chars.some((c) => norm(c.name) === state.focus)) state.focus = null;
+  draw();
 }
-function cardStatus(data, issues, comp) {
-  if (["complete", "incomplete", "invalid"].includes(data.card_status)) return data.card_status;
-  if (data.status === "error" || issues.some((x) => x.severity === "error" && x.type !== "missing")) return "invalid";
-  if (data.status === "not_found" || comp.required_filled < comp.required_total || issues.some((x) => x.type === "missing")) return "incomplete";
-  return "complete";
+
+function findSpan(text, frag) {
+  const low = text.toLowerCase();
+  for (const f of new Set([frag, frag.replace(/(\d)\.(\d)/g, "$1,$2"), frag.replace(/(\d),(\d)/g, "$1.$2")])) {
+    const at = low.indexOf(f.toLowerCase());
+    if (at >= 0) return { start: at, end: at + f.length };
+  }
+  return null;
 }
-function statusBadges(data, issues) {
-  const cs = codeStatus(data);
-  const comp = completenessOf(data);
-  const card = cardStatus(data, issues, comp);
-  const nMiss = Math.max(0, (comp.required_total || 0) - (comp.required_filled || 0));
-  const cardText = card === "complete" ? "заполнена" : card === "invalid" ? "есть ошибки" : nMiss ? `не хватает обязательных: ${nMiss}` : "неполная";
-  const cls = (v) => (v === "determined" || v === "complete" ? "good" : v === "not_found" || v === "invalid" ? "bad" : "mid");
-  return `<div class="sbadges"><span class="sbadge ${cls(cs)}" id="codeBadge">Код: ${CODE_LABELS[cs]}</span>
-    <span class="sbadge ${cls(card)}" id="cardBadge">Карточка: ${cardText}</span></div>
-    <div class="muted small" id="complLine">${comp.required_filled}/${comp.required_total} обязательных, ${comp.optional_filled}/${comp.optional_total} необязательных</div>`;
+
+function followAnswer() {
+  const a = state.answer;
+  state.answer = null;
+  if (!a || !state.data) return;
+  const field = norm(a.field), option = norm(a.option).replace(",", ".");
+  const got = state.chars.some((c) => {
+    const n = norm(c.name);
+    return (n === field || n.startsWith(field) || field.startsWith(n)) && norm(c.value).replace(",", ".") === option;
+  });
+  if (got) return;
+  if (!state.over.size) state.overText = $("text").value;
+  state.over.set(field, { name: a.field, value: a.option, unit: "" });
+  analyze();
+}
+
+function answer(field, option) {
+  const name = field.replace(/\s*\([^)]*\)/g, "").trim() || field;
+  const value = /^\d+,\d+$/.test(option) ? option.replace(",", ".") : option;
+  const ta = $("text");
+  ta.value = `${ta.value.replace(/[\s,.;]+$/, "")}, ${name}: ${value}`;
+  state.answer = { field, option };
+  analyze();
+}
+
+function textMatchesData() {
+  return !!state.data && $("text").value.trim() === String(state.data.input_text ?? "").trim();
+}
+function tidy(text) {
+  return text
+    .replace(/\s+([,.;])/g, "$1")
+    .replace(/([,;])(\s*[,;])+/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,;.]+|[\s,;]+$/g, "");
+}
+function cutSpans(spans) {
+  if (!textMatchesData()) return false;
+  let text = String(state.data.input_text);
+  for (const s of [...spans].sort((a, b) => b.start - a.start)) text = text.slice(0, s.start) + text.slice(s.end);
+  $("text").value = tidy(text);
+  return true;
+}
+function keepValue(group, keep) {
+  if (cutSpans(group.filter((c) => c !== keep).map((c) => c.span))) analyze();
+}
+function applyFix(c) {
+  if (!textMatchesData() || !c.span) return;
+  const text = String(state.data.input_text);
+  const from = text.slice(c.span.start, c.span.end);
+  let to = c.to;
+  if (from[0] && from[0] !== from[0].toLowerCase()) to = to.charAt(0).toUpperCase() + to.slice(1);
+  $("text").value = text.slice(0, c.span.start) + to + text.slice(c.span.end);
+  analyze();
+}
+
+function conflictGroups() {
+  const by = new Map();
+  for (const c of state.chars) {
+    if (!c.span || !filled(c) || c.polarity === "negative") continue;
+    const k = norm(c.name);
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push(c);
+  }
+  return [...by.values()].filter((g) => new Set(g.map((c) => `${norm(c.value)}|${norm(c.unit)}`)).size > 1);
+}
+function correctionsList(data) {
+  const src = String(data.input_text ?? "");
+  return (data.corrections || [])
+    .map((c) => ({ field: c.field || "", kind: c.kind || "", from: String(c.from ?? c.from_ ?? ""), to: String(c.to ?? ""), span: spanOf(c) }))
+    .filter((c) => c.from && c.from !== c.to)
+    .map((c) => ({ ...c, fixable: FIXABLE.has(c.kind) && !!c.span && norm(src.slice(c.span.start, c.span.end)) === norm(c.from) }));
+}
+
+function badgesBlock(data, match, card, search, steps) {
+  const missing = state.chars.filter((c) => c.required && !filled(c)).length;
+  const extras = state.chars.filter((c) => c.origin === "new" && filled(c)).length;
+  const errors = (data.issues || []).map(normIssue).filter((i) => i.severity === "error").length;
+  let cardNote = "";
+  if (card === "INCOMPLETE") cardNote = missing ? ` · не заполнено обязательных: ${missing}` : errors ? ` · ошибок: ${errors}` : "";
+  if (card === "HAS_UNVERIFIED_EXTRAS" && extras) cardNote = `: ${extras}`;
+  const counters = search ? countersBlock(search, data) : "";
+  return `<div class="summary" id="summary"><div class="sbadges">
+      <span class="sbadge ${MATCH[match][1]}" id="matchBadge" data-status="${match}"><span class="cap">Подбор</span>${MATCH[match][0]}</span>
+      <span class="sbadge ${CARD[card][1]}" id="cardBadge" data-status="${card}"><span class="cap">Карточка</span>${CARD[card][0]}${cardNote}</span>
+    </div>${counters}</div>`;
+}
+function countersBlock(s, data) {
+  const prev = state.prevSearch;
+  const related = prev && (norm(data.input_text).includes(norm(prev.text)) || norm(prev.text).includes(norm(data.input_text)) || similarity(prev.text, data.input_text) >= 0.6);
+  const was = (old, now) => (related && old != null && now != null && old !== now && prev.area_size === s.area
+    ? `<span class="was-num" title="В предыдущем ответе">было ${old}</span>` : "");
+  const domain = DOMAINS[s.domain] || "все категории";
+  return `<div class="counters" id="counters">
+      <div class="counter"><b id="areaSize">${s.area ?? "—"}</b><span>в области поиска · ${esc(domain)}</span></div>
+      <div class="counter"><b id="checkedCount">${s.checked ?? "—"}</b><span>проверено по характеристикам</span>${was(prev && prev.checked_count, s.checked)}</div>
+      <div class="counter ok"><b id="compatibleCount">${s.compatible ?? "—"}</b><span>совместимы</span>${was(prev && prev.compatible_count, s.compatible)}</div>
+    </div>`;
+}
+
+function actionBlock(data, match) {
+  if (match === "INPUT_CONFLICT") {
+    const groups = conflictGroups();
+    const issues = (data.issues || []).map(normIssue).filter((i) => i.message.startsWith("INPUT_CONFLICT"));
+    const body = groups.length
+      ? groups.map((g, k) => `<div class="conflict-row"><div><b>${esc(g[0].name)}</b>: в описании ${g.length} разных значения</div>
+          <div class="chips">${g.map((c, j) => `<button class="chip" type="button" data-keep="${k}:${j}">Оставить ${esc(withUnit(c))}</button>`).join("")}</div></div>`).join("")
+      : issues.map((i) => `<div>${esc(i.message.replace(/^INPUT_CONFLICT:\s*/, ""))}</div>`).join("");
+    return `<div class="block conflict" id="conflict"><h2>Противоречие во вводе</h2>
+      <div class="muted">Подбор кода остановлен: пока одно и то же свойство задано разными значениями, код выбрать нельзя.</div>${body}</div>`;
+  }
+  if (match === "NO_MATCH_IN_SNAPSHOT") {
+    const s = data.search || {};
+    const full = s.completeness === "full";
+    return `<div class="block nomatch" id="noMatch"><h2>Совместимых кодов нет</h2>
+      <div>${full ? `Проверена вся область поиска (${s.area_size} позиций): ни один код КТРУ не совместим с введёнными значениями.` : "В снимке КТРУ не нашлось позиции для этого описания."}</div>
+      <div class="muted">Причины отсева — в блоке «Подбор кода КТРУ» ниже. Исправьте значение или уберите лишнее свойство.</div></div>`;
+  }
+  const q = data.question;
+  if (!q || !q.field || !(q.options || []).length) return "";
+  const n = data.search ? data.search.compatible_count : null;
+  return `<div class="block question" id="question"><h2>Уточняющий вопрос</h2>
+    <div class="q-field">${esc(q.field)}</div>
+    ${q.reason ? `<div class="muted">${esc(q.reason)}</div>` : ""}
+    <div class="chips">${q.options.map((o, k) => `<button class="chip answer" type="button" data-answer="${k}">${esc(o)}</button>`).join("")}</div>
+    <div class="hint">Ответ допишется в описание${n != null ? ` · сейчас совместимы ${n}` : ""}</div></div>`;
+}
+
+function bestBlock(data, match) {
+  const b = data.best_ktru;
+  if (!b || match === "INPUT_CONFLICT" || match === "NO_MATCH_IN_SNAPSHOT") return "";
+  const title = match === "MATCHED" ? "Код КТРУ" : "Предварительный код КТРУ";
+  return `<div class="block" id="best"><h2>${title}</h2>
+    <div class="best"><span class="code">${esc(b.code)}</span>${b.okpd2 ? `<span class="muted">ОКПД2 ${esc(b.okpd2)}</span>` : ""}</div>
+    <div class="best-name">${esc(b.name)}</div>
+    ${match === "MATCHED" ? "" : `<div class="muted">Код станет окончательным после уточнения.</div>`}</div>`;
+}
+
+function valueEditor(c, i) {
+  if (c.allowed) {
+    const opts = c.allowed.includes(String(c.value)) || !filled(c) ? c.allowed : [String(c.value), ...c.allowed];
+    return `<select data-i="${i}" data-k="value"><option value=""></option>${opts
+      .map((o) => `<option${String(c.value) === o ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  }
+  if (c.min !== undefined || c.max !== undefined) {
+    return `<input type="number" step="any" data-i="${i}" data-k="value" value="${esc(c.value)}"
+      ${c.min !== undefined ? `min="${c.min}"` : ""} ${c.max !== undefined ? `max="${c.max}"` : ""} />
+      <div class="hint">допустимо: ${c.min ?? "…"} – ${c.max ?? "…"}${c.unit ? " " + esc(c.unit) : ""}</div>`;
+  }
+  return `<input data-i="${i}" data-k="value" value="${esc(c.value)}" />`;
+}
+function charRow(c, i, issues) {
+  const iss = issues.find((x) => x.field && norm(x.field) === norm(c.name) && x.type !== "missing");
+  const emptyReq = c.required && !filled(c);
+  const cls = [iss ? (iss.severity === "error" ? "err" : "warn") : emptyReq ? "warn" : "", state.focus === norm(c.name) ? "active" : ""].join(" ").trim();
+  const notes = [];
+  if (c.required) notes.push(filled(c) ? "обязательная" : "обязательная · заполните");
+  if (c.edited) notes.push("задано в таблице");
+  if (c.polarity === "negative") notes.push("указано с отрицанием");
+  const canDelete = !!c.span || c.edited;
+  return `<tr class="${cls}" data-row="${i}" data-name="${esc(norm(c.name))}">
+      <td class="name"><span class="char-name">${esc(c.name)}</span>${notes.length ? `<div class="hint">${notes.join(" · ")}</div>` : ""}</td>
+      <td class="muted from">${esc(c.user_input)}</td>
+      <td>${valueEditor(c, i)}${iss && iss.expected ? `<div class="hint">ожидается: ${esc(iss.expected)}</div>` : ""}</td>
+      <td><input class="unit" data-i="${i}" data-k="unit" value="${esc(c.unit)}" /></td>
+      <td><span class="badge ${c.origin}">${ORIGINS[c.origin]}</span></td>
+      <td>${canDelete ? `<button class="del" type="button" data-del="${i}" title="Убрать из описания">×</button>` : ""}</td>
+    </tr>`;
+}
+function charsBlock(issues) {
+  const rows = state.chars.map((c, i) => (c.origin === "new" ? "" : charRow(c, i, issues))).join("");
+  const edited = state.over.size
+    ? `<div class="hint" id="ovNote">Изменено в таблице: ${state.over.size} <button class="btn link small" type="button" id="resetOv">Сбросить правки таблицы</button></div>` : "";
+  return `<div class="block" id="chars"><h2>Характеристики</h2>
+    <table class="chars"><thead><tr><th>Характеристика</th><th>Из текста</th><th>Значение</th><th>Ед.</th><th>Источник</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="6" class="muted">Характеристики КТРУ не найдены</td></tr>`}</tbody></table>${edited}</div>`;
+}
+function extrasBlock(issues) {
+  const list = state.chars.map((c, i) => [c, i]).filter(([c]) => c.origin === "new");
+  if (!list.length) return "";
+  return `<div class="block extras" id="extras"><h2>Дополнения</h2>
+    <div class="muted">Свойств нет ни в КТРУ, ни в выгрузках портала. Код по ним не сужается, перед публикацией их нужно проверить.</div>
+    <table class="chars"><thead><tr><th>Свойство</th><th>Из текста</th><th>Значение</th><th>Ед.</th><th>Статус</th><th></th></tr></thead>
+    <tbody>${list.map(([c, i]) => charRow(c, i, issues)).join("")}</tbody></table></div>`;
+}
+function correctionsBlock(data) {
+  const list = correctionsList(data);
+  if (!list.length) return "";
+  return `<div class="block" id="corrBlock"><h2>Исправления</h2>${list.map((c, k) => `<div class="corr">
+      <span class="kind">${esc(KINDS[c.kind] || c.kind || "исправление")}</span>
+      ${c.field ? `<b>${esc(c.field)}:</b> ` : ""}<span class="from">${esc(c.from)}</span> → <span class="to">${esc(c.to)}</span>
+      ${c.fixable ? `<button class="btn link small" type="button" data-fix="${k}">Исправить в тексте</button>` : ""}</div>`).join("")}</div>`;
+}
+function issuesBlock(issues) {
+  const missing = issues.filter((x) => x.type === "missing" && x.field && !state.chars.some((c) => norm(c.name) === norm(x.field)));
+  const other = issues.filter((x) => !(x.type === "missing" && x.field) && !x.message.startsWith("INPUT_CONFLICT"));
+  const list = other.map((x, k) => `<div class="issue ${x.severity === "error" ? "error" : ""} ${esc(x.type)}">
+      <div>${x.field ? `<b>${esc(x.field)}:</b> ` : ""}${esc(x.message)}</div>
+      ${x.expected ? `<div class="exp">Ожидается: ${esc(x.expected)}</div>` : ""}
+      ${x.suggestions.length ? `<div class="chips">${x.suggestions
+        .map((s) => (x.field || x.span
+          ? `<button class="chip" type="button" data-sug="${k}" data-val="${esc(s)}">${esc(s)}</button>`
+          : `<span class="chip static">${esc(s)}</span>`)).join("")}</div>` : ""}
+    </div>`).join("");
+  const miss = missing.length
+    ? `<div class="lbl">Не хватает обязательных характеристик:</div><div class="chips">${missing
+      .map((x) => `<button class="chip add" type="button" data-miss="${esc(x.field)}">+ ${esc(x.field)}</button>`).join("")}</div>` : "";
+  return { html: list + miss || `<div class="muted">Замечаний нет</div>`, other };
+}
+function funnelBlock(data, steps, search) {
+  if (!steps.length && !search) return "";
+  const checks = Array.isArray(data.checks) ? data.checks : [];
+  const fails = checks.filter((c) => c.outcome === "FAIL");
+  const unknown = new Set(checks.filter((c) => c.outcome === "UNKNOWN").map((c) => c.code)).size;
+  let head = "";
+  if (search && search.area) {
+    const share = Math.max(0, Math.min(100, Math.round((100 * (search.compatible ?? 0)) / search.area)));
+    head = `<div class="area-bar" title="Совместимы ${search.compatible} из ${search.area}"><div class="fill" style="width:${share}%"></div></div>
+      <div class="muted">${search.full ? "Проверена вся область поиска" : "Область поиска проверена не полностью"}${unknown ? ` · без данных для проверки: ${unknown} (не отсеяны)` : ""}</div>`;
+  }
+  const rows = steps.map((s, k) => `<div class="step${k === steps.length - 1 ? " last" : ""}">
+      <div class="step-head"><span>${esc(s.label)}</span><span class="num">${s.remaining}${s.removed ? ` <span class="minus">−${s.removed}</span>` : ""}</span></div>
+      ${s.reason ? `<div class="reason">${esc(s.reason)}</div>` : ""}</div>`).join("");
+  const shown = fails.slice(0, 5);
+  const rest = fails.slice(5);
+  const failRow = (c) => `<li><span class="code">${esc(c.code)}</span> <span class="muted">${esc(c.char_name)}</span><div class="reason">${esc(c.reason || "значение недопустимо")}</div></li>`;
+  const failed = new Set(fails.map((c) => c.code)).size;
+  const removed = search && search.area && search.compatible != null ? search.area - search.compatible : failed;
+  const title = removed > failed ? `Отсеяно кодов: ${removed} (причины показаны для ${failed})` : `Отсеяно кодов: ${failed}`;
+  const rejected = fails.length
+    ? `<div class="lbl">${title}</div><ul class="rejected" id="rejected">${shown.map(failRow).join("")}</ul>${rest.length
+      ? `<details><summary>Ещё ${rest.length}</summary><ul class="rejected">${rest.map(failRow).join("")}</ul></details>` : ""}` : "";
+  const cands = Array.isArray(data.candidates) ? data.candidates : [];
+  const candList = cands.length > 1
+    ? `<div class="lbl">Подходящие коды</div><div class="cand-list">${cands.slice(0, 5).map((c) => `<div class="cand-item"><span class="code">${esc(c.code)}</span><span>${esc(c.name)}</span></div>`).join("")}</div>` : "";
+  return `<div class="block" id="funnel"><h2>Подбор кода КТРУ</h2>${head}<div class="steps">${rows}</div>${rejected}${candList}</div>`;
 }
 function nextStepsBlock(data) {
   let items = Array.isArray(data.next_steps_detail) && data.next_steps_detail.length
@@ -161,388 +505,239 @@ function nextStepsBlock(data) {
     : (data.next_steps || []).map((x) => ({ text: String(x), required: true }));
   if (!items.length) return "";
   items = [...items.filter((x) => x.required), ...items.filter((x) => !x.required)];
-  return `<div class="block"><h2>Что сделать дальше</h2><ul class="next">${items
-    .map((x) => `<li class="${x.required ? "req" : "opt"}">${escapeHtml(x.text)}${x.required ? "" : ' <span class="muted">(необязательно)</span>'}</li>`).join("")}</ul></div>`;
+  return `<div class="block" id="next"><h2>Что сделать дальше</h2><ul class="next">${items
+    .map((x) => `<li class="${x.required ? "req" : "opt"}">${esc(x.text)}${x.required ? "" : ' <span class="muted">(необязательно)</span>'}</li>`).join("")}</ul></div>`;
 }
 
-/* ---------- было → стало ---------- */
-function correctionsList(data) {
-  if (Array.isArray(data.corrections)) return data.corrections.map((c) => ({ field: c.field || "", kind: c.kind || "", from: String(c.from ?? ""), to: String(c.to ?? "") })).filter((c) => c.from !== c.to);
-  // fallback: user_input против value+unit
+function statusLine(data, match, card) {
+  const ms = data.debug && data.debug.elapsed_ms != null ? ` · ${Math.round(data.debug.elapsed_ms)} мс` : "";
+  const q = data.question && data.question.field && (data.question.options || []).length ? data.question.field : "";
+  let text = "Нужно уточнение";
+  const cardHint = card === "INCOMPLETE" ? " · заполните карточку" : card === "HAS_UNVERIFIED_EXTRAS" ? " · проверьте дополнения" : "";
+  if (match === "MATCHED") text = `Код КТРУ определён: ${data.best_ktru ? data.best_ktru.code : ""}${cardHint}`;
+  else if (match === "INPUT_CONFLICT") text = "Подбор остановлен: в описании противоречивые значения";
+  else if (match === "NO_MATCH_IN_SNAPSHOT") text = "Совместимых кодов КТРУ нет";
+  else if (q) text = `Нужно уточнение: ${q}`;
+  $("status").className = `status ${MATCH[match][1]}`;
+  $("status").textContent = text + ms;
+}
+
+function marks() {
   const out = [];
+  const d = state.data;
   for (const c of state.chars) {
-    const v = String(c.value ?? "").trim();
-    if (!c.user_input || !v) continue;
-    const to = (v + (c.unit ? " " + c.unit : "")).trim();
-    const ui = norm(c.user_input);
-    if (ui.includes(norm(to)) || (ui.includes(norm(v)) && (!c.unit || ui.includes(norm(c.unit))))) continue;
-    out.push({ field: c.name, kind: /^\d/.test(v) ? "unit" : "autofix", from: c.user_input, to });
+    if (!c.span || c.span.end <= c.span.start) continue;
+    out.push({ s: c.span.start, e: c.span.end, cls: c.origin === "new" ? "fact extra" : "fact", name: norm(c.name), title: `${c.name}: ${withUnit(c)}` });
+    if (state.focus === norm(c.name)) out.push({ s: c.span.start, e: c.span.end, cls: "focus", name: norm(c.name), title: "" });
+  }
+  for (const raw of d.issues || []) {
+    const i = normIssue(raw);
+    if (i.type === "missing" || !i.span || i.span.end <= i.span.start) continue;
+    out.push({ s: i.span.start, e: i.span.end, cls: i.severity === "error" ? "error" : "warning", name: "", title: i.message });
+  }
+  for (const a of d.ambiguities || []) {
+    if (a.end > a.start) out.push({ s: a.start, e: a.end, cls: "warning", name: "", title: a.reason || "отдельный товар" });
   }
   return out;
 }
-function correctionsBlock(data) {
-  const list = correctionsList(data);
-  if (!list.length) return "";
-  return `<div class="block" id="corrBlock"><h2>Было → стало</h2>${list.map((c) => `<div class="corr">
-    <span class="kind">${escapeHtml(KIND_LABELS[c.kind] || c.kind || "исправление")}</span>
-    ${c.field ? `<b>${escapeHtml(c.field)}:</b> ` : ""}<span class="from">${escapeHtml(c.from)}</span> → <span class="to">${escapeHtml(c.to)}</span></div>`).join("")}</div>`;
+function paint(text, list) {
+  const cuts = new Set([0, text.length]);
+  for (const m of list) { cuts.add(Math.max(0, Math.min(text.length, m.s))); cuts.add(Math.max(0, Math.min(text.length, m.e))); }
+  const points = [...cuts].sort((a, b) => a - b);
+  let html = "";
+  for (let k = 0; k < points.length - 1; k++) {
+    const a = points[k], b = points[k + 1];
+    const piece = esc(text.slice(a, b));
+    const on = list.filter((m) => m.s <= a && m.e >= b);
+    if (!on.length) { html += piece; continue; }
+    const cls = [...new Set(on.flatMap((m) => m.cls.split(" ")))].join(" ");
+    const named = on.find((m) => m.cls === "focus") || on.find((m) => m.name);
+    const title = [...new Set(on.map((m) => m.title).filter(Boolean))].join("; ");
+    html += `<mark class="${cls}"${named ? ` data-name="${esc(named.name)}"` : ""} title="${esc(title)}">${piece}</mark>`;
+  }
+  return html;
 }
-
-/* ---------- подсветка фрагментов в тексте ---------- */
-// Фрагменты берутся по span из текста запроса (data.input_text), затем ищутся в ТЕКУЩЕМ тексте
-// буквально (ближайшее к исходной позиции вхождение) — так подсветка не съезжает при наборе.
-function collectMarks(data) {
-  const src = String(data.input_text ?? state.sentText ?? "");
-  const marks = [];
-  for (const raw of data.issues || []) {
-    const i = normIssue(raw);
-    if (i.type === "missing") continue;
-    let frag = "", pos = -1;
-    if (Array.isArray(raw.span) && raw.span.length === 2 && raw.span[1] > raw.span[0]) { frag = src.slice(raw.span[0], raw.span[1]); pos = raw.span[0]; }
-    if (!frag && i.value && src.toLowerCase().includes(String(i.value).toLowerCase())) frag = String(i.value);
-    if (!frag && i.field) {
-      const c = (data.characteristics || []).find((x) => norm(x.name) === norm(i.field));
-      if (c && Array.isArray(c.span) && c.span[1] > c.span[0]) { frag = src.slice(c.span[0], c.span[1]); pos = c.span[0]; }
-      else if (c && c.user_input) frag = c.user_input;
-    }
-    if (!frag.trim()) continue;
-    marks.push({ frag, pos, sev: i.severity === "error" ? "error" : "warning", msg: i.message || i.type });
-  }
-  return marks;
-}
-function drawHighlight() {
-  const box = $("hl");
-  if (!box) return;
-  const text = $("text").value;
-  const marks = state.data ? collectMarks(state.data) : [];
-  const ranges = [];
-  const low = text.toLowerCase();
-  for (const m of marks) {
-    const f = m.frag.toLowerCase();
-    let best = -1, at = low.indexOf(f);
-    while (at >= 0) { if (best < 0 || Math.abs(at - m.pos) < Math.abs(best - m.pos)) best = at; at = low.indexOf(f, at + 1); }
-    if (best < 0) continue;
-    const r = { s: best, e: best + f.length, sev: m.sev, msg: m.msg };
-    const ov = ranges.find((x) => r.s < x.e && x.s < r.e);
-    if (ov) { if (r.sev === "error") ov.sev = "error"; ov.msg += "; " + r.msg; ov.s = Math.min(ov.s, r.s); ov.e = Math.max(ov.e, r.e); }
-    else ranges.push(r);
-  }
-  if (!ranges.length) { box.hidden = true; box.innerHTML = ""; return; }
-  ranges.sort((a, b) => a.s - b.s);
-  let html = "", p = 0;
-  for (const r of ranges) {
-    if (r.s < p) continue;
-    html += escapeHtml(text.slice(p, r.s)) + `<mark class="${r.sev}" title="${escapeHtml(r.msg)}">${escapeHtml(text.slice(r.s, r.e))}</mark>`;
-    p = r.e;
-  }
-  html += escapeHtml(text.slice(p));
+function drawSource() {
+  const d = state.data;
+  if (!d) { $("source").hidden = true; return; }
+  $("source").hidden = false;
+  $("hl").innerHTML = paint(String(d.input_text ?? ""), marks());
+  const box = $("focusLine");
+  const c = state.focus ? state.chars.find((x) => norm(x.name) === state.focus) : null;
+  if (!c) { box.hidden = true; box.innerHTML = ""; return; }
+  const before = c.user_input || (c.span ? String(d.input_text).slice(c.span.start, c.span.end) : "");
+  const after = withUnit(c);
   box.hidden = false;
-  box.innerHTML = html;
+  box.innerHTML = `<div class="focus-name">${esc(c.name)}${c.origin === "new" ? ' <span class="badge new">дополнение</span>' : ""}</div>
+    <div class="was-now"><span class="was"><span class="cap">было</span>${before ? esc(before) : "в тексте нет"}</span>
+    <span class="arrow">→</span><span class="now"><span class="cap">стало</span>${after ? esc(after) : "не заполнено"}</span></div>`;
+}
+function setFocus(name, scroll) {
+  state.focus = name || null;
+  document.querySelectorAll("#result tr[data-row]").forEach((tr) => tr.classList.toggle("active", tr.dataset.name === state.focus));
+  drawSource();
+  if (scroll) {
+    const tr = document.querySelector(`#result tr[data-name="${CSS.escape(state.focus || "")}"]`);
+    if (tr) tr.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
 }
 
-/* ---------- render ---------- */
-function badge(src) {
-  return `<span class="badge ${src}">${SOURCE_LABELS[src]}</span>`;
-}
-function valueEditor(c, i) {
-  if (c.allowed) {
-    const opts = c.allowed.includes(String(c.value)) || !c.value ? c.allowed : [String(c.value), ...c.allowed];
-    return `<select data-i="${i}" data-k="value"><option value=""></option>${opts
-      .map((o) => `<option${String(c.value) === o ? " selected" : ""}>${escapeHtml(o)}</option>`)
-      .join("")}</select>`;
-  }
-  const hasRange = c.min !== undefined || c.max !== undefined;
-  if (hasRange) {
-    return `<input type="number" data-i="${i}" data-k="value" value="${escapeHtml(c.value)}"
-      ${c.min !== undefined ? `min="${c.min}"` : ""} ${c.max !== undefined ? `max="${c.max}"` : ""} />
-      <div class="hint">допустимо: ${c.min ?? "…"} – ${c.max ?? "…"}${c.unit ? " " + escapeHtml(c.unit) : ""}</div>`;
-  }
-  return `<input data-i="${i}" data-k="value" value="${escapeHtml(c.value)}" />`;
-}
-function charsTable(issues) {
-  const rowIssue = (c) => issues.find((x) => x.field && norm(x.field) === norm(c.name) && x.type !== "missing");
-  const rows = state.chars
-    .map((c, i) => {
-      const iss = rowIssue(c);
-      const emptyReq = c.required && !String(c.value ?? "").trim();
-      const cls = iss ? (iss.severity === "error" ? "err" : "warn") : emptyReq ? "warn" : "";
-      return `<tr class="${cls}">
-        <td><input data-i="${i}" data-k="name" value="${escapeHtml(c.name)}" placeholder="Название" />
-          ${c.required ? `<div class="hint">обязательная${String(c.value ?? "").trim() ? "" : " · заполните"}</div>` : ""}</td>
-        <td class="muted">${escapeHtml(c.user_input)}</td>
-        <td>${valueEditor(c, i)}${iss && iss.expected ? `<div class="hint">ожидается: ${escapeHtml(iss.expected)}</div>` : ""}</td>
-        <td><input data-i="${i}" data-k="unit" value="${escapeHtml(c.unit)}" style="width:70px" /></td>
-        <td>${badge(c.source)}</td>
-        <td><button class="del" data-del="${i}" title="Удалить">×</button></td>
-      </tr>`;
-    })
-    .join("");
-  return `<table class="chars"><thead><tr><th>Характеристика</th><th>Из текста</th><th>Значение</th><th>Ед.</th><th>Источник</th><th></th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="6" class="muted">Характеристики не найдены</td></tr>`}</tbody></table>
-    <div style="margin-top:10px"><button class="btn ghost small" id="addRow">+ Добавить характеристику</button></div>`;
-}
-function issuesBlock(issues) {
-  // обязательные, уже есть строкой в таблице (пусть и пустой), не дублируем чипом
-  const missing = issues.filter((x) => x.type === "missing" && x.field && !state.chars.some((c) => norm(c.name) === norm(x.field)));
-  const other = issues.filter((x) => !(x.type === "missing" && x.field));
-  const missingInTable = issues.filter((x) => x.type === "missing" && x.field && !missing.includes(x)).length;
-  const list = other
-    .map((x, k) => `<div class="issue ${x.severity === "error" ? "error" : ""}">
-      <div>${x.field ? `<b>${escapeHtml(x.field)}:</b> ` : ""}${escapeHtml(x.message)}</div>
-      ${x.expected ? `<div class="exp">Ожидается: ${escapeHtml(x.expected)}</div>` : ""}
-      ${x.suggestions.length ? `<div class="chips">${x.suggestions
-        .map((s) => `<button class="chip" data-sug="${k}" data-val="${escapeHtml(s)}">${escapeHtml(s)}</button>`)
-        .join("")}</div>` : ""}
-    </div>`)
-    .join("");
-  const miss = missing.length
-    ? `<div class="lbl">Не хватает обязательных характеристик — нажмите, чтобы добавить:</div>
-       <div class="chips">${missing
-        .map((x) => `<button class="chip add" data-miss="${escapeHtml(x.field)}">+ ${escapeHtml(x.field)}</button>`)
-        .join("")}</div>`
-    : "";
-  const inTable = missingInTable ? `<div class="lbl">Заполните обязательные характеристики в таблице: ${missingInTable}</div>` : "";
-  return { html: list + miss + inTable || `<div class="muted">Замечаний нет</div>`, other: other.filter((x) => !(x.type === "missing" && x.field)) };
-}
-function funnelBlock(steps, candidates) {
-  if (!steps.length) return `<div class="muted">Нет данных</div>`;
-  const max = Math.max(...steps.map((s) => s.remaining), 1);
-  const bars = steps
-    .map((s, i) => {
-      const w = Math.max(4, Math.round((Math.log10(s.remaining + 1) / Math.log10(max + 1)) * 100));
-      const last = i === steps.length - 1;
-      return `<div class="bar-row">
-        <div class="bar-head"><span>${escapeHtml(s.label)}</span>${s.removed ? `<span class="muted">−${s.removed}</span>` : ""}</div>
-        <div class="bar ${last ? "last" : ""}" style="width:${w}%">${s.remaining}</div>
-        ${s.reason ? `<div class="reason">${escapeHtml(s.reason)}</div>` : ""}
-        ${s.removed_codes.length ? `<div class="reason">исключены: ${s.removed_codes.map(escapeHtml).join(", ")}</div>` : ""}
-      </div>`;
-    })
-    .join("");
-  const path = `<div class="muted" style="margin-bottom:10px">${steps.map((s) => s.remaining).join(" → ")}</div>`;
-  const cands = candidates.length > 1
-    ? `<div class="lbl">Подходящие коды:</div><div class="cand-list">${candidates
-        .slice(0, 5)
-        .map((c) => `<div class="cand-item"><span class="code">${escapeHtml(c.code)}</span><span>${escapeHtml(c.name)}</span><span class="score">${c.score ?? ""}</span></div>`)
-        .join("")}</div>`
-    : "";
-  return `<div class="funnel">${path}${bars}</div>${cands}`;
-}
-
-function render(data) {
-  // сменился распознанный товар/домен/топ-код -> правки с именами, которых нет в новом ответе, отбрасываем
-  const key = [data.detected_domain || "", data.product_guess || "", data.best_ktru && data.best_ktru.code || ""].join("|");
-  if (state.lastKey !== null && key !== state.lastKey && state.dirty.size) {
-    const names = new Set((data.characteristics || []).map((c) => norm(c.name || "")));
-    for (const k of [...state.dirty.keys()]) if (!names.has(k)) state.dirty.delete(k);
-    if (!state.dirty.size) resetOverrides();
-  }
-  state.lastKey = key;
-  state.data = data;
-  state.chars = (data.characteristics || []).map(normChar);
-  // повторно применяем правки пользователя из таблицы поверх ответа
-  for (const [key, ov] of state.dirty) {
-    const row = state.chars.find((c) => norm(c.name) === key);
-    if (row) { row.value = ov.value; row.unit = ov.unit; }
-    else state.chars.push(normChar({ ...ov, source: ov.source || "new" }));
-  }
-  draw();
-}
 function draw() {
   const data = state.data;
   if (!data) return;
   const active = document.activeElement;
-  const focus = active && active.dataset && active.dataset.i !== undefined
+  const keep = active && active.dataset && active.dataset.i !== undefined
     ? { i: active.dataset.i, k: active.dataset.k, pos: active.selectionStart } : null;
-
   const issues = (data.issues || []).map(normIssue);
   const steps = normSteps(data);
-  const candidates = getCandidates(data, steps);
-  $("status").className = `status ${data.status || "idle"}`;
-  $("status").textContent = statusLabel(data.status);
-
-  const best = data.best_ktru
-    ? `<div class="block"><h2>Код КТРУ</h2><div class="best"><span class="code">${escapeHtml(data.best_ktru.code)}</span><span class="muted">${data.best_ktru.score ?? ""}</span></div>
-       <div><b>${escapeHtml(data.best_ktru.name)}</b></div>
-       ${data.best_ktru.okpd2 ? `<div class="muted">ОКПД2: ${escapeHtml(data.best_ktru.okpd2)}</div>` : ""}
-       <div class="muted" style="margin-top:6px">Код КТРУ — это группа товаров; цены на конкретную СТЕ задают поставщики, по ним считается референтная цена.</div></div>`
-    : "";
+  const search = searchOf(data, steps);
+  const match = matchOf(data);
+  const card = cardOf(data);
+  statusLine(data, match, card);
   const ib = issuesBlock(issues);
-  const next = nextStepsBlock(data);
-  const elapsed = data.debug && data.debug.elapsed_ms != null ? `<span class="muted"> · ${data.debug.elapsed_ms} мс</span>` : "";
-
+  const product = data.product_guess ? ` · товар: <b>${esc(data.product_guess)}</b>` : "";
   $("result").className = "result";
   $("result").innerHTML = `
-    ${statusBadges(data, issues)}
-    <div class="block"><h2>Распознано${elapsed}</h2>
-      <div class="muted">Категория: <b>${escapeHtml(data.detected_domain || "—")}</b> · Товар: <b>${escapeHtml(data.product_guess || "—")}</b></div></div>
-    ${best}
-    <div class="block"><h2>Характеристики</h2>${charsTable(issues)}${state.dirty.size ? `<div class="hint" id="ovNote">Изменено в таблице: ${state.dirty.size}${state.textNote ? " · правки таблицы имеют приоритет над текстом" : ""} <button class="btn ghost small" id="resetOv">Сбросить правки таблицы</button></div>` : ""}</div>
+    ${badgesBlock(data, match, card, search, steps)}
+    ${actionBlock(data, match)}
+    ${bestBlock(data, match)}
+    <div class="recognized muted">Категория: <b>${esc(DOMAINS[data.detected_domain] || "не определена")}</b>${product}</div>
+    ${charsBlock(issues)}
+    ${extrasBlock(issues)}
     ${correctionsBlock(data)}
-    <div class="block"><h2>Подсказки</h2>${ib.html}</div>
-    <div class="block"><h2>Сужение кодов КТРУ</h2>${funnelBlock(steps, candidates)}</div>
-    ${next}`;
-  bind(ib.other);
-  drawHighlight();
-
-  if (focus) {
-    const el = $("result").querySelector(`[data-i="${focus.i}"][data-k="${focus.k}"]`);
-    if (el) { el.focus(); try { if (focus.pos != null) el.setSelectionRange(focus.pos, focus.pos); } catch (_) {} }
+    <div class="block" id="issues"><h2>Подсказки</h2>${ib.html}</div>
+    ${funnelBlock(data, steps, search)}
+    ${nextStepsBlock(data)}`;
+  bind(ib.other, data);
+  drawSource();
+  if (keep) {
+    const el = $("result").querySelector(`[data-i="${keep.i}"][data-k="${keep.k}"]`);
+    if (el) { el.focus(); try { if (keep.pos != null) el.setSelectionRange(keep.pos, keep.pos); } catch (_) { } }
   }
 }
-function bind(otherIssues) {
+
+function editRow(row, key, value) {
+  const prev = String(row[key] ?? "");
+  row[key] = value;
+  if (key === "value" && syncText(row, prev, value)) return;
+  if (!state.over.size) state.overText = $("text").value;
+  state.over.set(norm(row.name), { name: row.name, value: String(row.value ?? ""), unit: row.unit || "" });
+}
+function syncText(row, prev, next) {
+  if (!row.span || !prev || !next || !textMatchesData()) return false;
+  const text = String(state.data.input_text);
+  const frag = text.slice(row.span.start, row.span.end);
+  const at = frag.toLowerCase().indexOf(prev.toLowerCase());
+  if (at < 0) return false;
+  const start = row.span.start + at;
+  $("text").value = text.slice(0, start) + next + text.slice(start + prev.length);
+  return true;
+}
+function removeRow(row) {
+  if (state.over.delete(norm(row.name)) && !row.span) { analyze(); return; }
+  if (row.span && cutSpans([row.span])) analyze();
+}
+
+function bind(other, data) {
   const root = $("result");
+  root.querySelectorAll("tr[data-row]").forEach((tr) => {
+    tr.addEventListener("click", () => setFocus(tr.dataset.name, false));
+    tr.addEventListener("focusin", () => setFocus(tr.dataset.name, false));
+  });
   root.querySelectorAll("[data-k]").forEach((el) => {
-    const ev = el.tagName === "SELECT" ? "change" : "input";
-    el.addEventListener(ev, () => {
-      const row = state.chars[+el.dataset.i];
-      const k = el.dataset.k;
-      const prev = row[k];
-      if (k === "name") {
-        state.dirty.delete(norm(prev)); // имя поменяли — старая правка снимается
-        row[k] = el.value;
-      } else {
-        row[k] = el.value;
-        syncText(row, k, String(prev ?? ""), String(el.value ?? ""));
-        markDirty(row);
-      }
-      schedule(true);
+    el.addEventListener("change", () => {
+      editRow(state.chars[+el.dataset.i], el.dataset.k, el.value);
+      analyze();
     });
   });
   root.querySelectorAll("[data-del]").forEach((el) =>
-    el.addEventListener("click", () => { state.chars.splice(+el.dataset.del, 1); draw(); schedule(true); }));
+    el.addEventListener("click", (e) => { e.stopPropagation(); removeRow(state.chars[+el.dataset.del]); }));
+  root.querySelectorAll("[data-answer]").forEach((el) =>
+    el.addEventListener("click", () => answer(data.question.field, data.question.options[+el.dataset.answer])));
+  const groups = conflictGroups();
+  root.querySelectorAll("[data-keep]").forEach((el) =>
+    el.addEventListener("click", () => {
+      const [g, j] = el.dataset.keep.split(":").map(Number);
+      keepValue(groups[g], groups[g][j]);
+    }));
+  const fixes = correctionsList(data);
+  root.querySelectorAll("[data-fix]").forEach((el) => el.addEventListener("click", () => applyFix(fixes[+el.dataset.fix])));
   const reset = $("resetOv");
-  if (reset) reset.addEventListener("click", () => {
-    if (state.origText !== null) $("text").value = state.origText;
-    resetOverrides();
-    clearTimeout(state.timer); analyze(false); // исходный текст, без characteristics
-  });
-  const add = $("addRow");
-  if (add) add.addEventListener("click", () => {
-    state.chars.push(normChar({ name: "", value: "", source: "new" }));
-    draw();
-    const inputs = root.querySelectorAll('[data-k="name"]');
-    if (inputs.length) inputs[inputs.length - 1].focus();
-  });
+  if (reset) reset.addEventListener("click", () => { dropOverrides(); analyze(); });
   root.querySelectorAll("[data-sug]").forEach((el) =>
     el.addEventListener("click", () => {
-      const iss = otherIssues[+el.dataset.sug];
-      const val = el.dataset.val;
+      const iss = other[+el.dataset.sug];
       const row = iss.field ? state.chars.find((c) => norm(c.name) === norm(iss.field)) : null;
-      if (row) { syncText(row, "value", String(row.value ?? ""), val); row.value = val; markDirty(row); }
-      else if (iss.field) { state.chars.push(normChar({ name: iss.field, value: val, source: "ktru" })); markDirty(state.chars[state.chars.length - 1]); }
-      else if (iss.value) $("text").value = $("text").value.replace(iss.value, val);
-      draw();
-      schedule(true);
+      if (row) editRow(row, "value", el.dataset.val);
+      else if (iss.field) {
+        if (!state.over.size) state.overText = $("text").value;
+        state.over.set(norm(iss.field), { name: iss.field, value: el.dataset.val, unit: "" });
+      } else if (iss.span && textMatchesData()) {
+        const text = String(state.data.input_text);
+        $("text").value = text.slice(0, iss.span.start) + el.dataset.val + text.slice(iss.span.end);
+      } else return;
+      analyze();
     }));
   root.querySelectorAll("[data-miss]").forEach((el) =>
     el.addEventListener("click", () => {
-      if (state.chars.some((c) => norm(c.name) === norm(el.dataset.miss))) return;
-      state.chars.push(normChar({ name: el.dataset.miss, value: "", source: "ktru", required: true }));
+      const name = el.dataset.miss;
+      if (state.chars.some((c) => norm(c.name) === norm(name))) return;
+      state.chars.push(normChar({ name, value: "", origin: "ktru", required: true }));
       draw();
       const v = root.querySelectorAll('[data-k="value"]');
       if (v.length) v[v.length - 1].focus();
     }));
 }
 
-/* ---------- table -> text sync ---------- */
-// Снимок textarea до первой правки таблицы (dirty: пусто -> не пусто).
-// Берётся один раз и не обновляется, даже если потом пользователь сам печатал в textarea:
-// «Сбросить правки таблицы» всегда возвращает текст, каким он был до правок таблицы.
-// Снимок сбрасывается при сбросе правок, выборе демо-кейса и «Очистить».
-/* ---------- правило сброса правок таблицы ----------
- * Правки таблицы (state.dirty + снимок state.origText) живут, только пока пользователь
- * правит ТОТ ЖЕ текст. state.baseText — последний текст, который «наш»: результат синхронизации
- * таблицы -> textarea либо текст последнего запроса с сохранёнными правками.
- * Текст считается НОВЫМ, и правки сбрасываются, если:
- *  1) нажата «Проверить» и текст отличается от baseText;
- *  2) вставка (paste/drop) или замена содержимого textarea;
- *  3) при наборе текст стал мало похож на baseText (сходство биграмм Dice < 0.6);
- *  4) выбран демо-кейс или нажато «Очистить».
- * Мелкая правка текста (сходство >= 0.6) правки сохраняет.
- * Дополнительно: если в ответе сменился товар/домен/топ-код, правки с именами,
- * которых нет среди характеристик нового ответа, отбрасываются (см. render). */
-const SIM_THRESHOLD = 0.6;
-function similarity(a, b) {
-  a = norm(a); b = norm(b);
-  if (a === b) return 1;
-  if (a.length < 2 || b.length < 2) return 0;
-  const grams = (s) => { const m = new Map(); for (let i = 0; i < s.length - 1; i++) { const g = s.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
-  const A = grams(a), B = grams(b); let inter = 0;
-  for (const [g, n] of A) inter += Math.min(n, B.get(g) || 0);
-  return (2 * inter) / (a.length - 1 + b.length - 1);
-}
-function resetOverrides() {
-  state.dirty.clear(); state.textNote = false; state.origText = null; state.baseText = null;
-}
-function checkNewText(fromButton) {
-  if (!state.dirty.size) { state.baseText = null; return; }
-  const cur = $("text").value.trim();
-  const base = (state.baseText ?? "").trim();
-  if (fromButton ? cur !== base : similarity(cur, base) < SIM_THRESHOLD) resetOverrides();
-  else state.baseText = $("text").value; // мелкая правка того же текста -> правки остаются
-}
-function snapshotText() {
-  if (state.origText === null && state.dirty.size === 0) state.origText = $("text").value;
-}
-function markDirty(row) {
-  if (!row.name.trim()) return;
-  snapshotText();
-  state.dirty.set(norm(row.name), { name: row.name, value: row.value, unit: row.unit, source: row.source });
-  state.baseText = $("text").value;
-}
-// Заменяет фрагмент user_input в textarea («высота 750 мм» -> «высота 900 мм»).
-// Программная запись в textarea не порождает событие input, поэтому лишнего пересчёта нет.
-function syncText(row, k, prev, next) {
-  snapshotText(); // до переписывания textarea
-  const frag = row.user_input || "";
-  const ta = $("text");
-  if (!frag || !prev || prev === next) { if (frag && prev !== next && !prev) state.textNote = true; return; }
-  const pos = frag.indexOf(prev);
-  const at = ta.value.indexOf(frag);
-  if (pos < 0 || at < 0) { state.textNote = true; refreshNote(); return; }
-  const newFrag = frag.slice(0, pos) + next + frag.slice(pos + prev.length);
-  ta.value = ta.value.slice(0, at) + newFrag + ta.value.slice(at + frag.length);
-  row.user_input = newFrag;
-  state.baseText = ta.value;
-  drawHighlight();
-}
-function refreshNote() {
-  const n = $("ovNote");
-  if (n && state.textNote && !n.textContent.includes("приоритет")) {
-    n.insertBefore(document.createTextNode(" · правки таблицы имеют приоритет над текстом "), n.querySelector("button"));
-  }
-}
-
-/* ---------- init ---------- */
 async function loadDemos() {
   const res = await fetch("/api/demo-cases");
   const cases = await res.json();
   const box = $("demos");
   box.innerHTML = "";
-  cases.forEach((c) => {
+  for (const c of cases) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "chip";
     b.textContent = c.title;
-    b.onclick = () => { resetOverrides(); state.lastKey = null; $("text").value = c.text; $("domain").value = c.domain_hint || ""; analyze(false); };
+    b.onclick = () => {
+      dropOverrides();
+      state.answer = null;
+      $("text").value = c.text;
+      $("domain").value = c.domain_hint || "";
+      analyze();
+    };
     box.appendChild(b);
-  });
+  }
 }
-$("run").onclick = () => { clearTimeout(state.timer); analyze(false, true); };
+
+$("run").addEventListener("click", () => analyze());
+$("undo").addEventListener("click", undo);
 $("text").addEventListener("input", (e) => {
-  const t = e && e.inputType || "";
-  if (t === "insertFromPaste" || t === "insertFromDrop" || t === "insertReplacementText") resetOverrides();
-  drawHighlight();
-  schedule(false);
+  const t = (e && e.inputType) || "";
+  if (t === "insertFromPaste" || t === "insertFromDrop") dropOverrides();
+  state.answer = null;
+  schedule();
 });
-$("domain").addEventListener("change", () => schedule(false));
-$("clear").onclick = () => {
-  clearTimeout(state.timer); state.seq++;
-  $("text").value = ""; $("domain").value = "";
-  state.data = null; state.chars = []; resetOverrides(); state.lastKey = null;
-  $("status").className = "status idle"; $("status").textContent = "Введите описание товара";
-  $("result").className = "result empty"; $("result").textContent = "Здесь появится результат проверки";
-  drawHighlight();
-};
-loadDemos().catch(console.error);
+$("text").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); analyze(); }
+});
+$("domain").addEventListener("change", () => analyze());
+$("hl").addEventListener("click", (e) => {
+  const m = e.target.closest("mark[data-name]");
+  if (m) setFocus(m.dataset.name, true);
+});
+$("clear").addEventListener("click", () => {
+  clearTimeout(state.timer);
+  state.seq++;
+  $("text").value = "";
+  $("domain").value = "";
+  dropOverrides();
+  Object.assign(state, { data: null, chars: [], history: [], done: null, restoring: null, focus: null, answer: null, prevSearch: null });
+  refreshUndo();
+  $("source").hidden = true;
+  $("status").className = "status idle";
+  $("status").textContent = "Введите описание товара";
+  $("result").className = "result empty";
+  $("result").textContent = "Здесь появится результат проверки";
+});
+loadDemos().catch(() => { $("demos").innerHTML = '<span class="muted">Примеры недоступны</span>'; });

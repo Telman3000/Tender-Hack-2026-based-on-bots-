@@ -5,5 +5,12 @@ services:
       - "8000:8000"
     volumes:
       - ./data/processed:/app/data/processed
-    environment:
-      - PYTHONUNBUFFERED=1
+      - ${MATERIALS:-./_materials}:/materials:ro
+    command:
+      - sh
+      - -c
+      - |
+        ready='from app.db import db_ready; raise SystemExit(0 if db_ready() else 1)'
+        python -c "$$ready" || { python -m scripts.build_index --materials /materials && python -c "$$ready"; } || {
+          echo "catalog.db не собрана: положите материалы «Казань 2026» в ./_materials или укажите путь в MATERIALS"; exit 1; }
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000

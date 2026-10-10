@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Помощник заполнения характеристик — Портал поставщиков</title>
-  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20261010e" />
-  <link rel="stylesheet" href="/static/styles.css?v=20261010e" />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20261010p3" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261010p3" />
 </head>
 <body>
   <header class="top">
@@ -17,32 +17,36 @@
           <div class="brand-sub">Помощник заполнения характеристик и подбора КТРУ</div>
         </div>
       </div>
-      <div class="meta">Tender Hack 2026</div>
     </div>
   </header>
 
   <main class="layout">
     <section class="card input-panel">
       <h1>Описание товара</h1>
-      <p class="lead">Введите описание в свободной форме — сервис выделит характеристики, проверит их по КТРУ и сузит список кодов. Таблицу можно редактировать: результат пересчитается автоматически.</p>
+      <p class="lead">Опишите товар одной строкой. Сервис выделит характеристики, сверит их с КТРУ и сузит список кодов.</p>
 
       <label class="lbl" for="text">Текст</label>
-      <textarea id="text" rows="5" placeholder="Например: стол офисный, ширина 1200 мм, глубина 750 мм, материал ЛДСП"></textarea>
-      <div id="hl" class="hl-preview" hidden aria-label="Проблемные фрагменты текста"></div>
+      <textarea id="text" rows="5" placeholder="Например: стол письменный ЛДСП высота 750 мм ширина 1200 мм"></textarea>
 
-      <div class="row">
-        <label class="lbl" for="domain">Категория (необязательно)</label>
-        <select id="domain">
-          <option value="">Авто</option>
-          <option value="furniture">Мебель</option>
-          <option value="clothing">Одежда</option>
-          <option value="tools">Инструменты</option>
-        </select>
-      </div>
+      <label class="lbl" for="domain">Категория</label>
+      <select id="domain">
+        <option value="">Определить автоматически</option>
+        <option value="furniture">Мебель</option>
+        <option value="clothing">Одежда</option>
+        <option value="tools">Инструменты</option>
+      </select>
 
       <div class="actions">
-        <button id="run" class="btn primary">Проверить</button>
-        <button id="clear" class="btn ghost">Очистить</button>
+        <button id="run" class="btn primary" type="button">Проверить</button>
+        <button id="undo" class="btn ghost" type="button" disabled>Отменить правку</button>
+        <button id="clear" class="btn link" type="button">Очистить</button>
+      </div>
+
+      <div id="source" class="source" hidden>
+        <div class="lbl">Разбор текста</div>
+        <div id="hl" class="hl-preview" aria-label="Текст запроса с найденными фрагментами"></div>
+        <div id="focusLine" class="focus-line" hidden></div>
+        <div class="hint">Нажмите на характеристику справа или на фрагмент здесь, чтобы увидеть, откуда взято значение.</div>
       </div>
 
       <div class="demos">
@@ -52,13 +56,13 @@
     </section>
 
     <section class="result-panel">
-      <div id="status" class="status idle">Введите описание товара</div>
+      <div id="status" class="status idle" role="status" aria-live="polite">Введите описание товара</div>
       <div id="result" class="result empty">Здесь появится результат проверки</div>
     </section>
   </main>
 
-  <footer class="foot">Источники характеристик: <span class="badge ktru">КТРУ</span> <span class="badge portal">Портал</span> <span class="badge new">Новая</span></footer>
+  <footer class="foot">Источник характеристики: <span class="badge ktru">КТРУ</span> <span class="badge portal">Портал</span> <span class="badge new">дополнение</span></footer>
 
-  <script src="/static/app.js?v=20261010e"></script>
+  <script src="/static/app.js?v=20261010p3"></script>
 </body>
 </html>

@@ -1,212 +1,210 @@
 # Tender Hack 2026 — автозаполнение характеристик СТЕ и подбор кода КТРУ
 
-Сервис принимает свободное описание товара («Стол офисный ЛДСП высота 750 мм цвет серый»),
-выделяет характеристики, приводит названия и единицы к виду КТРУ и пошагово сужает
-множество кодов КТРУ до конечного кода (группы вариаций). Он явно сообщает об ошибках:
-недопустимые значения, выход за диапазон, неверные единицы, опечатки, незаполненные
-обязательные характеристики. Домены: мебель, одежда, инструменты. Порядок источников
-характеристик: КТРУ → частотные характеристики портала → новое свойство. Без LLM и внешних API.
+Поставщик пишет описание товара одной строкой, например «Стол письменный ЛДСП высота 750 мм». Сервис:
 
-## Требования
+- выделяет характеристики и приводит названия и единицы к КТРУ;
+- сверяет каждое значение со всеми кодами КТРУ своей категории и сужает список до конечного кода;
+- сообщает об опечатках, противоречиях, недопустимых значениях и незаполненных обязательных характеристиках.
 
-- Python **3.11** (проверено на 3.11.9; на Linux тесты без базы прошли и на 3.13).
-- ОС: Windows 10/11, Linux (x86_64); macOS — не проверено.
-- RAM: сборка индекса — пик ~410 МБ, сервер — ~130 МБ после загрузки каталога.
-  Рекомендуется от 2 ГБ свободной памяти.
-- Диск: ~160 МБ архив материалов + ~120 МБ `catalog.db` + ~250 МБ venv.
-- Зависимости: `requirements.txt` (FastAPI, uvicorn, pydantic, rapidfuzz, numpy, lxml, openpyxl, pytest).
+Источники характеристик идут по приоритету: КТРУ → характеристики портала → новое свойство («дополнение»).
 
-## Данные
+Категории: мебель, одежда, инструменты. Сервис работает без LLM и внешних API.
 
-Архив организаторов «Казань 2026»: https://disk.yandex.ru/d/5Olg3IoYYf4loA
+## Что на экране
 
-После распаковки ожидается структура:
+- **Два статуса.**
+  - Подбор кода: код определён / нужно уточнение / противоречие во вводе / нет совпадения в снимке КТРУ / техническая ошибка.
+  - Карточка: готова / неполная / есть непроверенные дополнения.
+- **Три числа под ними:**
+  - сколько кодов в области поиска (`area_size`);
+  - сколько проверено по характеристикам (`checked_count`);
+  - сколько осталось совместимых (`compatible_count`).
 
-```
-Казань 2026/
-  Критерии_оценки_для_методички_участникам_Казани_20261006.docx
-  Презентация Задачи_Хакатон_Казань_20261009_1900_pdf.pdf
-  КТРУ/
-    КТРУ xml.zip                          # ~102 МБ, вложенные zip с nsiKTRUNew_all_actual_*.xml
-    Описание структуры xml с КТРУ.docx
-  Примеры выгрузок/
-    Мебель.xlsx  Одежда.xlsx  Инструменты.xlsx
-```
+  Рядом показано прошлое значение, если ответ изменился после правки.
+- **«Разбор текста».** Клик по характеристике подсвечивает её фрагмент в тексте запроса. Под фрагментом строка «было → стало»: как написано у поставщика и что получилось после нормализации, например «мощность 0,65 кВт → 650 Вт».
+- **Уточняющий вопрос** с вариантами-кнопками. Ответ дописывается в описание.
+- **При противоречии** («высота 750 мм высота 900 мм») код не выбирается. Экран предлагает оставить одно из значений.
+- **Отсеянные коды с причиной** проверки, например «значение недопустимо для …».
+- **Свойства, которых нет ни в КТРУ, ни в выгрузках портала**, стоят отдельным блоком «Дополнения», не среди строк КТРУ.
+- **Кнопка «Отменить правку»** возвращает прошлый текст и пересчитывает ответ.
 
-`КТРУ xml.zip` распаковывать **не нужно** — скрипт читает вложенные zip сам.
+Если ответ пришёл на уже изменённый текст, он не рисуется.
 
-Встроенный распаковщик Windows («Извлечь всё») может записать русские имена папок
-«кракозябрами» (`Љ§\xa0\xadм 2026\...`). Варианты:
-- распаковать архив через **7-Zip** (имена сохраняются корректно);
-- или просто переименовать верхнюю папку, например в `Kazan2026`, и передать её в `--materials` —
-  имена вложенных папок и файлов скрипту не важны, файлы ищутся по расширению и содержимому.
+Процесс и развилки: [docs/BPMN.md](docs/BPMN.md). Сценарий показа: [docs/demo_script.md](docs/demo_script.md).
 
-`data/processed/catalog.db` **не хранится в git** (~120 МБ), его нужно собрать.
+## Запуск на Linux от чистого клона
 
-## Установка и запуск
+Нужны git и материалы организаторов «Казань 2026»: [архив на Яндекс Диске](https://disk.yandex.ru/d/5Olg3IoYYf4loA).
 
-### Windows (PowerShell)
-
-```powershell
-git clone https://github.com/Telman3000/Tender-Hack-2026-based-on-bots-.git
-cd Tender-Hack-2026-based-on-bots-
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1          # при запрете скриптов: Set-ExecutionPolicy -Scope Process Bypass
-pip install -r requirements.txt
-$env:PYTHONUTF8 = "1"
-# путь к папке, где лежат «КТРУ\КТРУ xml.zip» и «Примеры выгрузок\*.xlsx», например:
-python -m scripts.build_index --materials "C:\Users\Asus\Downloads\Kazan2026_unzipped\Казань 2026"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-### Linux (bash)
+Из архива нужны только `КТРУ/КТРУ xml.zip` и три файла `Примеры выгрузок/*.xlsx`.
+- Вложенный `КТРУ xml.zip` распаковывать не нужно: скрипт сам читает вложенные архивы.
+- Имена папок могут распаковаться «кракозябрами» — это не мешает, файлы ищутся по расширению и содержимому.
 
 ```bash
 git clone https://github.com/Telman3000/Tender-Hack-2026-based-on-bots-.git
 cd Tender-Hack-2026-based-on-bots-
+mkdir -p _materials
+unzip -q ~/Downloads/Казань\ 2026.zip -d _materials
+```
+
+Папка `_materials` в `.gitignore`. Если материалы уже распакованы в другом месте, укажите путь к ним в переменной `MATERIALS` (для Docker) или в `--materials` (без Docker).
+
+### Вариант 1: Docker
+
+```bash
+docker compose up --build
+```
+
+При первом запуске контейнер сам собирает `data/processed/catalog.db` из `./_materials` (около полутора минут) и затем поднимает сервис. Каталог `data/processed` смонтирован с хоста, поэтому следующие запуски берут готовую базу и стартуют за несколько секунд.
+
+Материалы лежат не в `_materials`:
+
+```bash
+MATERIALS="/путь/к/Казань 2026" docker compose up --build
+```
+
+Если материалов нет, контейнер завершится с сообщением «catalog.db не собрана…», а не поднимет пустой сервис.
+
+Открыть: http://127.0.0.1:8000/
+
+### Вариант 2: без Docker (Python 3.11)
+
+```bash
 python3.11 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-python -m scripts.build_index --materials "/path/to/Казань 2026"
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-### macOS (Intel и Apple Silicon) — не проверено на macOS
-
-```bash
-brew install python@3.11            # или установщик с https://www.python.org/downloads/
-git clone https://github.com/Telman3000/Tender-Hack-2026-based-on-bots-.git
-cd Tender-Hack-2026-based-on-bots-
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-# архив с кириллическими именами распаковывать так (Finder/unzip могут исказить имена):
-ditto -x -k "Казань 2026.zip" ~/Kazan2026        # или: brew install unar && unar "Казань 2026.zip"
-python -m scripts.build_index --materials ~/Kazan2026
+python -m scripts.build_index --materials _materials
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Занятый порт: `lsof -i :8000`.
+Открыть: http://127.0.0.1:8000/ . Swagger: http://127.0.0.1:8000/docs . Проверка готовности: `curl http://127.0.0.1:8000/api/health` должен вернуть `"db_ready": true`.
 
-UI: http://127.0.0.1:8000/ , API: `POST http://127.0.0.1:8000/api/analyze`, Swagger: http://127.0.0.1:8000/docs
+## Замеры
 
-Сборка индекса (замер на чистом клоне, Windows, Python 3.11): **~110 с**, результат —
-3391 позиция КТРУ (мебель 355, одежда 1522, инструменты 1514), 72 753 строки
-допустимых значений, 60 000 СТЕ портала, `catalog.db` ≈ 120 МБ.
-Установка venv + pip ≈ 40 с.
+Linux, Ubuntu 24.04, 2 vCPU Intel Xeon 2.8 ГГц, 8 ГБ RAM, Python 3.11.17. Чистый клон ветки `person1` (555bc50) с файлами экрана. Материалы — архив «Казань 2026» от 2026-10-05.
 
-Параметры `build_index`: `--ktru-files N` — ограничить число частей КТРУ (только для
-отладки, по умолчанию все), `--ste-limit` — число СТЕ на категорию (по умолчанию 20000),
-`--db` — другой путь к базе. Путь к базе для сервера можно задать переменной `CATALOG_DB`.
+| Что | Результат |
+|---|---|
+| `pip install -r requirements.txt` | 16 с |
+| Сборка индекса `python -m scripts.build_index` | **81 с**, пик памяти **407 МиБ** |
+| Размер `data/processed/catalog.db` | **125 739 008 байт (≈ 120 МиБ)** |
+| Содержимое базы | 3391 позиция КТРУ (мебель 355, одежда 1522, инструменты 1514), 72 753 допустимых значения характеристик, 60 000 СТЕ портала, 99 498 их характеристик |
+| Старт сервера до `db_ready: true` | 1,3 с |
+| Память процесса uvicorn (RSS) | **124 МиБ** после старта, **142 МиБ** после 270 запросов |
+| Время ответа, 270 последовательных запросов из `qa/cases.csv` | p50 92 мс, p95 155 мс, максимум 242 мс |
+| Docker: первый `docker compose up` (сборка индекса в контейнере) | 85 с до `db_ready: true` |
+| Docker: повторный запуск с готовой базой | 3 с |
+| Docker: память контейнера | 121 МиБ после старта, 132 МиБ после `qa/ui_accept.py` |
 
-### Docker
+Как повторить замер:
+- время и пик памяти сборки: `/usr/bin/time -v python -m scripts.build_index --materials _materials`;
+- память сервера: `ps -o rss= -p <PID>` или `docker stats --no-stream`.
 
-В репозитории есть `Dockerfile` и `docker-compose.yml`. Индекс собирается на хосте
-(шаги выше), каталог `data/processed` монтируется в контейнер:
-
-```bash
-docker compose up --build      # http://127.0.0.1:8000/
-```
-
-**Не проверено:** Docker Desktop на тестовой машине установлен, но движок не был запущен (попытка запуска прервана), поэтому образ не собирался и нагрузочный тест контейнера не выполнялся.
+Каждый воркер uvicorn держит свою копию каталога. При `--workers N` память растёт примерно в N раз.
 
 ## Проверка
 
 ```bash
-python -m pytest -q            # 62 passed (без catalog.db часть тестов пропускается)
-curl -s -X POST http://127.0.0.1:8000/api/analyze -H "Content-Type: application/json" \
-     -d '{"text":"Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"}'
-python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и qa/summary.md
+python -m pytest -q
+python qa/ui_accept.py --base http://127.0.0.1:8000
+python qa/smoke.py --base http://127.0.0.1:8000
+python qa/run_eval.py
 ```
 
-pytest может показать одно предупреждение `StarletteDeprecationWarning: Using httpx with
-starlette.testclient is deprecated` — оно из FastAPI/Starlette TestClient, безвредно и на
-работу сервиса не влияет.
+- `pytest`: юнит- и контрактные тесты. Без `catalog.db` тесты, которым нужна база, пропускаются.
+- `qa/ui_accept.py`: приёмка экрана в Chromium на четырёх живых вводах из сценария демо:
+  - опечатка с единицей;
+  - уточняющий вопрос;
+  - конфликт двух значений;
+  - дополнительное свойство.
 
-В PowerShell тело запроса удобнее передать файлом: `curl.exe ... --data-binary "@req.json"`
-(файл в UTF-8). Запрос: `{text, characteristics?: [{name, value, unit}], domain_hint?}`
-(`domain_hint`: `furniture` | `clothing` | `tools`, иное значение → HTTP 422).
+  Плюс проверки, что устаревший ответ не рисуется и что отказ базы показан как техническая ошибка. Статусы и числа на экране сверяются с ответом API и с таблицей в `docs/demo_script.md`. Код выхода 0 — всё прошло.
+- `qa/smoke.py`: быстрый прогон API и экрана без ответов 5xx и ошибок JavaScript.
+- `qa/run_eval.py`: качество подбора на `qa/cases.csv`, пишет `qa/summary.md`. Цифры качества берите из этого файла.
 
-Сокращённый пример ответа на этот запрос (реальный ответ; выборочные элементы; полный список полей — в [docs/api.md](docs/api.md)):
+Для экранных проверок нужен Playwright с Chromium:
+
+```bash
+pip install playwright
+python -m playwright install chromium
+```
+
+## API
+
+`POST /api/analyze`, тело запроса: `{"text": "...", "domain_hint": "furniture" | "clothing" | "tools" | null, "characteristics": [{"name", "value", "unit"}]}`.
+- `characteristics` — значения из таблицы, они перекрывают распознанные из текста.
+- Неверный `domain_hint` возвращает HTTP 422.
+
+Ответ на `Ключ гаечный длина 27 см`, выбранные поля:
 
 ```json
 {
-  "detected_domain": "furniture",
-  "product_guess": "Стол офисный ЛДСП",
-  "best_ktru": {"code": "31.01.10.000-00000004", "name": "Стол письменный", "okpd2": "31.01.1",
-                "required_chars": ["Конфигурация стола", "Тип каркаса", "Вид материала столешницы",
-                                   "Назначение стола письменного", "Вид материала каркаса"]},
-  "status": "need_more",
+  "match_status": "NEEDS_CLARIFICATION",
+  "card_status": "INCOMPLETE",
+  "search": {"domain": "tools", "area_size": 1514, "checked_count": 302, "compatible_count": 1464, "completeness": "full"},
+  "best_ktru": {"code": "25.73.30.171-00000001", "name": "Ключ гаечный разводной"},
   "characteristics": [
-    {"name": "Высота", "value": "750", "unit": "мм", "source": "portal", "user_input": "высота 750 мм",
-     "required": false, "allowed": null, "min": null, "max": null},
-    {"name": "Вид материала столешницы", "value": "ЛДСП", "unit": null, "source": "ktru", "user_input": "лдсп",
-     "required": true, "allowed": ["ДСП", "ЛДСП", "МДФ", "Массив дерева"], "min": null, "max": null},
-    {"name": "Вид материала каркаса", "value": "", "unit": null, "source": "ktru", "user_input": null,
-     "required": true, "allowed": ["Массив дерева", "МДФ", "ЛДСП", "ДСП"], "min": null, "max": null}
+    {"name": "Длина разводного ключа", "value": "270", "unit": "мм", "origin": "ktru",
+     "user_input": "длина 27 см", "span": {"start": 13, "end": 24}, "required": false, "min": 100.0, "max": 3000.0}
   ],
-  "narrowing": [
-    {"step": 1, "label": "Домен", "remaining": 355, "removed": 0, "reason": "Начальный пул КТРУ: домен «мебель»"},
-    {"step": 2, "label": "Наименование", "remaining": 8, "removed": 347, "reason": "Сопоставление с наименованием «Стол офисный ЛДСП»"},
-    {"step": 3, "label": "ОКПД2", "remaining": 3, "removed": 5, "reason": "Группы ОКПД2 лидеров: 31.01.1"},
-    {"step": 4, "label": "Итог", "remaining": 3, "removed": 0, "reason": "Группа вариаций «Стол письменный»: 3 кодов"}
+  "checks": [
+    {"code": "25.73.30.176-00000003", "char_name": "Длина головки", "outcome": "FAIL",
+     "reason": "«длина»=27 недопустимо для 25.73.30.176-00000003"}
   ],
-  "issues": [
-    {"type": "missing", "kind": "missing", "field": "Конфигурация стола", "severity": "warning",
-     "message": "Не заполнена обязательная характеристика КТРУ «Конфигурация стола»", "suggestions": ["Прямой", "Угловой"]}
-  ],
-  "debug": {"raw_count": 4, "elapsed_ms": 128.5}
+  "question": {"field": "Тип исполнения", "options": ["A", "B"]}
 }
 ```
 
-Статусы: `code_status` (determined | ambiguous | not_found) — уверенность в коде,
-`card_status` (complete | incomplete | invalid) — заполненность карточки, плюс `completeness`,
-`corrections`, `span`, `next_steps_detail` (см. [docs/api.md](docs/api.md)). Старое поле `status`
-сохранено: `not_found` > `error` > `need_more` > `ambiguous` > `ok`. Время ответа: медиана ~50 мс, в UI 70–200 мс.
+**`match_status`** — статус подбора:
+- `MATCHED`;
+- `NEEDS_CLARIFICATION`;
+- `INPUT_CONFLICT` — подбор остановлен, `best_ktru = null`;
+- `NO_MATCH_IN_SNAPSHOT` — только после полной проверки области.
 
-Нагрузочный тест (`python scripts/load_test.py --url http://127.0.0.1:8802 --n 50 --concurrency 50 --pid <PID>`,
-10 типовых запросов, Windows, Python 3.11, локальный uvicorn):
+**`card_status`** — статус карточки: `READY`, `INCOMPLETE`, `HAS_UNVERIFIED_EXTRAS`.
 
-| Конфигурация | Запросов / параллельно | p50 | p95 | max | Пропускная способность | RSS до → после |
-|---|---|---|---|---|---|---|
-| 1 воркер | 50 / 50 | 4.2 с | 5.7 с | 5.7 с | 8.7 запр/с | 134 → 146 МБ |
-| 1 воркер | 200 / 50 | 4.4 с | 5.5 с | 6.6 с | 12.2 запр/с | 146 → 153 МБ |
-| `--workers 4` | 50 / 50 | 2.2 с | 2.3 с | 2.3 с | 21.4 запр/с | 533 → 556 МБ (все процессы) |
+**`origin`** характеристики: `ktru`, `portal` или `new`.
 
-Один запрос обрабатывается ~50–100 мс CPU; при 50 одновременных запросах они встают в очередь,
-поэтому задержка растёт линейно. Для нескольких пользователей запускайте `--workers N`
-(каждый воркер держит свою копию каталога, ~130 МБ). RSS считается через `psutil` (если установлен).
+Старые поля `status`, `code_status`, `completeness`, `corrections`, `next_steps` сохранены.
 
-QA (45 кейсов): верный код в топ-1 98%, в топ-3 100%.
+`GET /api/health` возвращает `db_ready`. Экран смотрит на него, чтобы отличить отказ базы от «нет совпадения».
+
+## Windows и macOS
+
+Команды те же, отличается только активация окружения:
+- Windows (PowerShell): `python -m venv .venv`, `.\.venv\Scripts\Activate.ps1`, `$env:PYTHONUTF8 = "1"` перед `build_index`. Архив лучше распаковывать 7-Zip.
+- macOS: `python3.11 -m venv .venv && source .venv/bin/activate`. Архив с кириллицей распаковывается так: `ditto -x -k "Казань 2026.zip" _materials`.
+
+Docker Desktop на обеих системах запускается той же командой `docker compose up --build`.
 
 ## Частые проблемы
 
-- **Нет или пустой `catalog.db`** — сервер вернёт ошибку/`not_found` на всё, тесты с базой
-  пропускаются. Соберите индекс; проверьте, что в выводе 3391 позиция КТРУ.
-- **Старый `catalog.db` от MVP** (≈864 позиции, без таблицы `ktru_char_values`) использовать
-  нельзя — пересоберите. Если файл занят запущенным сервером: соберите в
-  `--db data/processed/catalog_new.db` и переименуйте после остановки сервера.
-- **Порт 8000 занят** — `--port 8001`; кто занял: `netstat -ano | findstr :8000` (Windows),
-  `ss -ltnp | grep 8000` (Linux).
-- **«Кракозябры» в консоли Windows** — `chcp 65001` и `$env:PYTHONUTF8 = "1"` перед запуском.
+- **«Подбор: техническая ошибка» на экране.** База не собрана или сервер не отвечает. Проверьте `curl http://127.0.0.1:8000/api/health`; при `"db_ready": false` соберите индекс.
+- **Старый `catalog.db`** (меньше 3391 позиции, без таблицы `ktru_char_values`) не подходит — пересоберите. Если файл занят запущенным сервером, соберите в `--db data/processed/catalog_new.db` и переименуйте после остановки.
+- **Порт 8000 занят.** Запустите с `--port 8001` или поменяйте левую часть `ports` в `docker-compose.yml`. Кто занял порт: `ss -ltnp | grep 8000`.
+- **Файлы базы в Docker принадлежат root.** Контейнер пишет `data/processed` от root. Удалить их можно через `sudo rm` или `docker compose run --rm ste-autofill rm -f data/processed/catalog.db`.
 
-## Структура проекта
+## Чего нет в репозитории
+
+- **Секретов нет:** ключей, токенов и `.env`. Сервис не обращается к внешним API.
+- **Весов моделей нет:** ML-моделей в проекте нет.
+- **Данных нет:** `catalog.db`, xlsx, xml и zip закрыты в `.gitignore` и собираются локально из материалов.
+
+Проверяет это тест `tests/test_contract_ui.py::test_repository_has_no_secrets_or_weights`. Он проходит по `git ls-files` и падает, если найдёт:
+- файлы весов или базы;
+- архивы;
+- файлы больше 5 МБ;
+- шаблоны приватных ключей и токенов.
+
+## Структура
 
 ```
-app/        main.py (FastAPI, UI), engine.py (оркестрация), parser.py (разбор текста),
-            unify.py (сопоставление с КТРУ), matcher.py (пошаговое сужение), validate.py,
-            units.py, catalog.py (кэш каталога), db.py, models.py, config.py
+app/        main.py (FastAPI и статика), engine.py (статусы), parser.py (разбор текста),
+            matcher.py (область поиска и проверки), unify.py (КТРУ → портал → дополнение),
+            questions.py (уточняющий вопрос), validate.py, units.py, catalog.py, db.py, models.py, config.py
 scripts/    build_index.py — сборка data/processed/catalog.db
-frontend/   index.html, app.js, styles.css
+frontend/   index.html, app.js, styles.css — экран
 tests/      pytest
-qa/         cases.csv, run_eval.py, summary.md
-docs/       документация
+qa/         cases.csv, run_eval.py, summary.md, ui_accept.py, smoke.py
+docs/       BPMN.md, process.bpmn, demo_script.md
 ```
-
-Документация:
-[BPMN-процесс](docs/BPMN.md) ([process.bpmn](docs/process.bpmn), [process.png](docs/process.png)),
-[схема компонентов](docs/components.png),
-[презентация](docs/presentation.md),
-[сценарий демо](docs/demo_script.md),
-[ответы жюри](docs/jury_qa.md),
-[простой питч](docs/pitch_simple.md).
