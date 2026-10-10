@@ -38,7 +38,16 @@ POWER_SYNONYMS = {
 # Workwear: "рабочий", "для уборщиц" -> спецодежда 14.12 / спецобувь 15.20.3
 WORK_STEMS = ("рабоч", "спец", "уборщ", "производствен", "защитн", "сигнальн", "охран", "строител")
 # qualifiers in KTRU names that must be backed by the query ("из кожи", "детская", "с верхом из меха")
-QUALIFIER_STEMS = ("кож", "мех", "детск", "женск", "мужск")
+QUALIFIER_STEMS = (
+    "кож", "=мех", "=меха", "=мехом", "мехов", "детск", "женск", "мужск", "резин", "пластик", "пациент", "хирург", "операцион",
+    "процедур", "изолир", "одноразов", "многоразов", "ученич", "лаборатор", "клавиш", "библиотеч",
+)
+# head noun -> generic KTRU name used for that kind of goods
+HEAD_SYNONYMS = {
+    "ботинк": "обувь специальная кожаная", "полуботинк": "обувь специальная кожаная",
+    "сапог": "обувь специальная", "туфл": "обувь", "кроссовк": "обувь",
+}
+OK_MARGIN = 8.0
 
 
 def work_signal(query: str) -> bool:
@@ -62,6 +71,7 @@ class NarrowResult:
     query: str = ""
     shown: list = field(default_factory=list)
     power_tool: bool = False
+    margin: float = 999.0
 
 
 def score_name(query: str, candidate: str) -> float:
@@ -166,17 +176,23 @@ def narrow_ktru(
         s1 = s1 + np.where(np.char.startswith(okp, "28.24"), 20.0,
                            np.where(np.char.startswith(okp, "25.7"), -15.0, 0.0))
         res.power_tool = True
-    if domain in ("clothing", None):
-        qws = norm(product).split()
-        if work_signal(product):
-            okp = cat.okpd_for(pool)
-            s1 = s1 + np.where(np.char.startswith(okp, "14.12") | np.char.startswith(okp, "15.20.3"), 30.0, 0.0)
-        pen = np.zeros(len(names))
-        for st in QUALIFIER_STEMS:
-            if any(w.startswith(st) for w in qws):
-                continue
-            pen += np.array([any(w.startswith(st) for w in n.split()[1:]) for n in names], dtype=float)
-        s1 = s1 - 15.0 * pen
+    qws = norm(product).split()
+    head0 = qws[0] if qws else ""
+    syn = next((v for k, v in HEAD_SYNONYMS.items() if head0.startswith(k)), None)
+    if syn and domain in ("clothing", None):
+        s1 = np.maximum(s1, _scores(syn + " " + query, names, toks) * 0.95)
+    if domain in ("clothing", None) and work_signal(product):
+        okp = cat.okpd_for(pool)
+        s1 = s1 + np.where(np.char.startswith(okp, "14.12") | np.char.startswith(okp, "15.20.3"), 30.0,
+                           np.where(np.char.startswith(okp, "14.14") | np.char.startswith(okp, "14.19"), -20.0, 0.0))
+    # qualifiers in the KTRU name not backed by the query
+    pen = np.zeros(len(names))
+    for st in QUALIFIER_STEMS:
+        exact = st.startswith("=")
+        if any((w == st[1:]) if exact else w.startswith(st) for w in qws):
+            continue
+        pen += cat.qualifier_mask(pool, st)
+    s1 = s1 - 25.0 * np.minimum(pen, 2)
     order = np.argsort(-s1, kind="stable")
     best_s = float(s1[order[0]])
     keep_idx = [int(i) for i in order[:80] if s1[i] >= NAME_MIN and s1[i] >= best_s - NAME_BAND]
@@ -255,6 +271,8 @@ def narrow_ktru(
     res.group = group
     res.best = cands[0][1]
     distinct_names = {e.name for _, e in group}
+    other = next((sc for sc, e, _ in cands if e.name != res.best.name), None)
+    res.margin = (top - other) if other is not None else 999.0
     final_note = "Конечный код выбран"
     if len(distinct_names) > 1:
         final_note = f"Конкурируют {len(group)} кодов — нужно уточнение"

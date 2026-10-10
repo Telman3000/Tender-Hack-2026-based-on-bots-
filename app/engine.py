@@ -5,7 +5,7 @@ import time
 
 from app.catalog import Catalog
 from app.db import connect, db_ready
-from app.matcher import candidates_view, narrow_ktru, _cand
+from app.matcher import OK_MARGIN, candidates_view, narrow_ktru, _cand
 from app.models import AnalyzeRequest, AnalyzeResponse, Issue
 from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text, translit_if_latin
 from app.unify import unify_characteristics
@@ -65,14 +65,22 @@ class CatalogEngine:
             elif i.severity == "error" and i.field:
                 next_steps.append(f"Исправьте «{i.field}»" + (f": {i.suggestions[0]}" if i.suggestions else ""))
 
-        if any(i.severity == "error" for i in issues):
+        # precedence: not_found > error > need_more > ambiguous > ok
+        missing_required = any(c.required and not c.value for c in chars)
+        if nr.best is None:
+            status = "not_found"
+        elif any(i.severity == "error" for i in issues):
             status = "error"
-        elif nr.best is None:
+        elif not filled or missing_required:
             status = "need_more"
-        elif any(i.type == "ambiguous" for i in issues):
+        elif (any(i.type in ("ambiguous", "typo") for i in issues) or nr.margin < OK_MARGIN):
             status = "ambiguous"
-        elif not filled:
-            status = "need_more"
+            if not any(i.type == "ambiguous" for i in issues):
+                issues.append(Issue.make(
+                    "ambiguous", severity="warning",
+                    message=f"Отрыв лучшего кода от следующего ({nr.margin:.1f}) мал — проверьте кандидатов",
+                    suggestions=["Добавьте отличительные характеристики"],
+                ))
         else:
             status = "ok"
         if not filled:

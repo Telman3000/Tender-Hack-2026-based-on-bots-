@@ -187,3 +187,16 @@ class Catalog:
         if key not in cache:
             cache[key] = np.array([self.entries[i].okpd2 or "" for i in pool], dtype=str)
         return cache[key]
+
+    def qualifier_mask(self, pool: list[int], stem: str):
+        import numpy as np
+
+        cache = self.__dict__.setdefault("_qual", {})
+        key = (id(pool), stem)
+        if key not in cache:
+            cache[key] = np.array(
+                [any((w == stem[1:]) if stem.startswith("=") else w.startswith(stem)
+                     for w in self.entries[i].name_norm.split()[1:]) for i in pool],
+                dtype=float,
+            )
+        return cache[key]

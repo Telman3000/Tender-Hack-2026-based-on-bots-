@@ -57,3 +57,28 @@ def test_contract_and_errors_block_ok():
             assert c.allowed is None or isinstance(c.allowed, list)
     finally:
         eng.close()
+
+
+def test_domain_hint_validation():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as c:
+        assert c.post("/api/analyze", json={"text": "стол", "domain_hint": "cars"}).status_code == 422
+        assert c.post("/api/analyze", json={"text": "стол", "domain_hint": ""}).status_code in (200, 503)
+
+
+@pytest.mark.skipif(not DB_PATH.exists(), reason="catalog.db not built yet")
+def test_status_precedence():
+    eng = CatalogEngine()
+    try:
+        # required KTRU characteristics left empty -> need_more, never ok
+        r = eng.analyze(AnalyzeRequest(text="Стол письменный ЛДСП", domain_hint="furniture"))
+        if any(c.required and not c.value for c in r.characteristics):
+            assert r.status == "need_more"
+        # every issue carries kind == type
+        assert all(i.kind == i.type for i in r.issues)
+        assert eng.analyze(AnalyzeRequest(text="Стол письменный высота 820 кг")).status == "error"
+    finally:
+        eng.close()

@@ -76,7 +76,7 @@ def unify_characteristics(
                 ))
         if value:
             have = {(i.type, i.field) for i in issues}
-            for i in sanity_issues(pc.name, value, item.unit, domain):
+            for i in sanity_issues(item.name, value, item.unit, domain):
                 if (i.type, i.field) not in have and not (spec and spec.is_numeric and i.type == "unit"):
                     issues.append(i)
         out.append(pc)

@@ -177,6 +177,7 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -
             "unit", field=name, value=f"{value} {u}", expected=exp,
             message=f"«{name}» не может измеряться в «{u}»",
             suggestions=[f"{value} {x}" for x in _DIM_HINT.get(exp, [])], severity="error"))
+        return out
     if u == "%" and not 0 <= num <= 100:
         out.append(Issue.make(
             "mismatch", field=name, value=f"{value} %", expected="0–100 %",
@@ -184,6 +185,13 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -
     if num <= 0 and any(k in low for k in ("высот", "ширин", "глубин", "длин", "масс", "вес", "мощност")):
         out.append(Issue.make("mismatch", field=name, value=value, expected="> 0",
                               message=f"«{name}» должно быть положительным", severity="error"))
+    if domain == "clothing" and not u:
+        for stem, lo, hi, what in (("размер", 18, 80, "российского размера одежды"), ("рост", 50, 220, "роста, см")):
+            if low.startswith(stem) and not lo <= num <= hi:
+                out.append(Issue.make(
+                    "mismatch", field=name, value=value, expected=f"{lo}–{hi}",
+                    message=f"«{name}» = {value} вне типичного диапазона {what} ({lo}–{hi})",
+                    severity="error"))
     limits = _LIMITS.get(domain or "", {})
     dim = dimension(u) if u else None
     if dim in limits:
