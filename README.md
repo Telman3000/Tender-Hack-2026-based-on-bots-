@@ -86,12 +86,12 @@ UI: http://127.0.0.1:8000/ , API: `POST http://127.0.0.1:8000/api/analyze`, Swag
 docker compose up --build      # http://127.0.0.1:8000/
 ```
 
-(Сборка Docker-образа в рамках этой проверки не запускалась.)
+**Не проверено:** Docker Desktop на тестовой машине установлен, но не запущен; образ не собирался.
 
 ## Проверка
 
 ```bash
-python -m pytest -q            # 31 passed (без catalog.db часть тестов пропускается)
+python -m pytest -q            # 35 passed (без catalog.db часть тестов пропускается)
 curl -s -X POST http://127.0.0.1:8000/api/analyze -H "Content-Type: application/json" \
      -d '{"text":"Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"}'
 python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и qa/summary.md
@@ -101,36 +101,42 @@ python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и q
 (файл в UTF-8). Запрос: `{text, characteristics?: [{name, value, unit}], domain_hint?}`
 (`domain_hint`: `furniture` | `clothing` | `tools`, иное значение → HTTP 422).
 
-Пример ответа (сокращён):
+Пример ответа на этот запрос (реальный ответ, сокращён: из массивов оставлены первые элементы):
 
 ```json
 {
   "detected_domain": "furniture",
   "product_guess": "Стол офисный ЛДСП",
-  "best_ktru": {"code": "31.01.10.000-00000011", "name": "Стол приставной", "okpd2": "31.01.1",
-                "required_chars": ["Тип каркаса", "Вид материала столешницы", "Вид материала каркаса"]},
+  "best_ktru": {"code": "31.01.10.000-00000004", "name": "Стол письменный", "okpd2": "31.01.1",
+                "required_chars": ["Конфигурация стола", "Тип каркаса", "Вид материала столешницы",
+                                   "Назначение стола письменного", "Вид материала каркаса"]},
   "status": "need_more",
   "characteristics": [
-    {"name": "Высота", "value": "750", "unit": "мм", "source": "ktru", "user_input": "высота 750 мм",
-     "required": false, "allowed": null, "min": 0.0, "max": 5000.0}
+    {"name": "Высота", "value": "750", "unit": "мм", "source": "portal", "user_input": "высота 750 мм",
+     "required": false, "allowed": null, "min": null, "max": null},
+    {"name": "Вид материала столешницы", "value": "ЛДСП", "unit": null, "source": "ktru", "user_input": "лдсп",
+     "required": true, "allowed": ["ДСП", "ЛДСП", "МДФ", "Массив дерева"], "min": null, "max": null},
+    {"name": "Вид материала каркаса", "value": "", "unit": null, "source": "ktru", "user_input": null,
+     "required": true, "allowed": ["Массив дерева", "МДФ", "ЛДСП", "ДСП"], "min": null, "max": null}
   ],
   "narrowing": [
     {"step": 1, "label": "Домен", "remaining": 355, "removed": 0, "reason": "Начальный пул КТРУ: домен «мебель»"},
-    {"step": 2, "label": "Наименование", "remaining": 46, "removed": 309},
-    {"step": 3, "label": "ОКПД2", "remaining": 37, "removed": 9}
+    {"step": 2, "label": "Наименование", "remaining": 8, "removed": 347, "reason": "Сопоставление с наименованием «Стол офисный ЛДСП»"},
+    {"step": 3, "label": "ОКПД2", "remaining": 3, "removed": 5, "reason": "Группы ОКПД2 лидеров: 31.01.1"},
+    {"step": 4, "label": "Итог", "remaining": 3, "removed": 0, "reason": "Группа вариаций «Стол письменный»: 3 кодов"}
   ],
   "issues": [
-    {"type": "missing", "kind": "missing", "field": "Тип каркаса", "severity": "warning",
-     "message": "Не заполнена обязательная характеристика КТРУ «Тип каркаса»", "suggestions": ["Деревянный"]}
+    {"type": "missing", "kind": "missing", "field": "Конфигурация стола", "severity": "warning",
+     "message": "Не заполнена обязательная характеристика КТРУ «Конфигурация стола»", "suggestions": ["Прямой", "Угловой"]}
   ],
-  "debug": {"elapsed_ms": 73.9}
+  "debug": {"raw_count": 4, "elapsed_ms": 128.5}
 }
 ```
 
 Статус: `not_found` > `error` > `need_more` > `ambiguous` > `ok`. Время ответа: 50–100 мс
-(QA: p50 ≈ 55 мс, p95 ≈ 170 мс).
+(QA: p50 ≈ 52 мс, p95 ≈ 130 мс).
 
-QA (45 кейсов): верный код в топ-1 96%, в топ-3 100%.
+QA (45 кейсов): верный код в топ-1 98%, в топ-3 100%.
 
 ## Частые проблемы
 
