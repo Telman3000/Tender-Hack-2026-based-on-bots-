@@ -1,4 +1,4 @@
-﻿"""QA eval: python qa/run_eval.py  (from repo root). Writes qa/results.csv, qa/summary.md."""
+"""QA eval: python qa/run_eval.py  (from repo root). Writes qa/results.csv, qa/summary.md."""
 from __future__ import annotations
 import csv, statistics, subprocess, sys, time
 from collections import defaultdict
@@ -36,8 +36,8 @@ def pct(xs):
     return f"{100*sum(xs)/len(xs):.0f}%" if xs else "-"
 
 
-def main(hint=True, suffix=""):
-    cases = list(csv.DictReader((QA / "cases.csv").open(encoding="utf-8-sig")))
+def main(hint=True, suffix="", cases_file="cases.csv"):
+    cases = list(csv.DictReader((QA / cases_file).open(encoding="utf-8-sig")))
     eng = CatalogEngine()
     eng.analyze(AnalyzeRequest(text="стол"))  # warmup
     rows = []
@@ -104,6 +104,7 @@ def main(hint=True, suffix=""):
 
 if __name__ == "__main__":
     sfx = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--suffix=")), "")
-    main(hint="--no-hint" not in sys.argv, suffix=sfx)
+    cf = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--cases=")), "cases.csv")
+    main(hint="--no-hint" not in sys.argv, suffix=sfx, cases_file=cf)
 
 

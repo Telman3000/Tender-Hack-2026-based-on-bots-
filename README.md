@@ -10,7 +10,7 @@
 ## Требования
 
 - Python **3.11** (проверено на 3.11.9; на Linux тесты без базы прошли и на 3.13).
-- ОС: Windows 10/11 или Linux (x86_64).
+- ОС: Windows 10/11, Linux (x86_64); macOS — не проверено.
 - RAM: сборка индекса — пик ~410 МБ, сервер — ~130 МБ после загрузки каталога.
   Рекомендуется от 2 ГБ свободной памяти.
 - Диск: ~160 МБ архив материалов + ~120 МБ `catalog.db` + ~250 МБ venv.
@@ -34,8 +34,12 @@
 ```
 
 `КТРУ xml.zip` распаковывать **не нужно** — скрипт читает вложенные zip сам.
-Встроенный распаковщик Windows может записать русские имена папок «кракозябрами»
-(`Љ§\xa0\xadм 2026\...`) — это не мешает: файлы ищутся по расширению и содержимому.
+
+Встроенный распаковщик Windows («Извлечь всё») может записать русские имена папок
+«кракозябрами» (`Љ§\xa0\xadм 2026\...`). Варианты:
+- распаковать архив через **7-Zip** (имена сохраняются корректно);
+- или просто переименовать верхнюю папку, например в `Kazan2026`, и передать её в `--materials` —
+  имена вложенных папок и файлов скрипту не важны, файлы ищутся по расширению и содержимому.
 
 `data/processed/catalog.db` **не хранится в git** (~120 МБ), его нужно собрать.
 
@@ -50,7 +54,8 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1          # при запрете скриптов: Set-ExecutionPolicy -Scope Process Bypass
 pip install -r requirements.txt
 $env:PYTHONUTF8 = "1"
-python -m scripts.build_index --materials "C:\path\to\Казань 2026"
+# путь к папке, где лежат «КТРУ\КТРУ xml.zip» и «Примеры выгрузок\*.xlsx», например:
+python -m scripts.build_index --materials "C:\Users\Asus\Downloads\Kazan2026_unzipped\Казань 2026"
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -65,6 +70,23 @@ pip install -r requirements.txt
 python -m scripts.build_index --materials "/path/to/Казань 2026"
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
+### macOS (Intel и Apple Silicon) — не проверено на macOS
+
+```bash
+brew install python@3.11            # или установщик с https://www.python.org/downloads/
+git clone https://github.com/Telman3000/Tender-Hack-2026-based-on-bots-.git
+cd Tender-Hack-2026-based-on-bots-
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+# архив с кириллическими именами распаковывать так (Finder/unzip могут исказить имена):
+ditto -x -k "Казань 2026.zip" ~/Kazan2026        # или: brew install unar && unar "Казань 2026.zip"
+python -m scripts.build_index --materials ~/Kazan2026
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Занятый порт: `lsof -i :8000`.
 
 UI: http://127.0.0.1:8000/ , API: `POST http://127.0.0.1:8000/api/analyze`, Swagger: http://127.0.0.1:8000/docs
 
@@ -86,22 +108,26 @@ UI: http://127.0.0.1:8000/ , API: `POST http://127.0.0.1:8000/api/analyze`, Swag
 docker compose up --build      # http://127.0.0.1:8000/
 ```
 
-**Не проверено:** Docker Desktop на тестовой машине установлен, но не запущен; образ не собирался.
+**Не проверено:** Docker Desktop на тестовой машине установлен, но движок не был запущен (попытка запуска прервана), поэтому образ не собирался и нагрузочный тест контейнера не выполнялся.
 
 ## Проверка
 
 ```bash
-python -m pytest -q            # 35 passed (без catalog.db часть тестов пропускается)
+python -m pytest -q            # 62 passed (без catalog.db часть тестов пропускается)
 curl -s -X POST http://127.0.0.1:8000/api/analyze -H "Content-Type: application/json" \
      -d '{"text":"Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"}'
 python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и qa/summary.md
 ```
 
+pytest может показать одно предупреждение `StarletteDeprecationWarning: Using httpx with
+starlette.testclient is deprecated` — оно из FastAPI/Starlette TestClient, безвредно и на
+работу сервиса не влияет.
+
 В PowerShell тело запроса удобнее передать файлом: `curl.exe ... --data-binary "@req.json"`
 (файл в UTF-8). Запрос: `{text, characteristics?: [{name, value, unit}], domain_hint?}`
 (`domain_hint`: `furniture` | `clothing` | `tools`, иное значение → HTTP 422).
 
-Пример ответа на этот запрос (реальный ответ, сокращён: из массивов оставлены первые элементы):
+Сокращённый пример ответа на этот запрос (реальный ответ; выборочные элементы; полный список полей — в [docs/api.md](docs/api.md)):
 
 ```json
 {
@@ -133,8 +159,23 @@ python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и q
 }
 ```
 
-Статус: `not_found` > `error` > `need_more` > `ambiguous` > `ok`. Время ответа: 50–100 мс
-(QA: p50 ≈ 52 мс, p95 ≈ 130 мс).
+Статусы: `code_status` (determined | ambiguous | not_found) — уверенность в коде,
+`card_status` (complete | incomplete | invalid) — заполненность карточки, плюс `completeness`,
+`corrections`, `span`, `next_steps_detail` (см. [docs/api.md](docs/api.md)). Старое поле `status`
+сохранено: `not_found` > `error` > `need_more` > `ambiguous` > `ok`. Время ответа: медиана ~50 мс, в UI 70–200 мс.
+
+Нагрузочный тест (`python scripts/load_test.py --url http://127.0.0.1:8802 --n 50 --concurrency 50 --pid <PID>`,
+10 типовых запросов, Windows, Python 3.11, локальный uvicorn):
+
+| Конфигурация | Запросов / параллельно | p50 | p95 | max | Пропускная способность | RSS до → после |
+|---|---|---|---|---|---|---|
+| 1 воркер | 50 / 50 | 4.2 с | 5.7 с | 5.7 с | 8.7 запр/с | 134 → 146 МБ |
+| 1 воркер | 200 / 50 | 4.4 с | 5.5 с | 6.6 с | 12.2 запр/с | 146 → 153 МБ |
+| `--workers 4` | 50 / 50 | 2.2 с | 2.3 с | 2.3 с | 21.4 запр/с | 533 → 556 МБ (все процессы) |
+
+Один запрос обрабатывается ~50–100 мс CPU; при 50 одновременных запросах они встают в очередь,
+поэтому задержка растёт линейно. Для нескольких пользователей запускайте `--workers N`
+(каждый воркер держит свою копию каталога, ~130 МБ). RSS считается через `psutil` (если установлен).
 
 QA (45 кейсов): верный код в топ-1 98%, в топ-3 100%.
 

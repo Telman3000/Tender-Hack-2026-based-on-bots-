@@ -1,6 +1,8 @@
 """Stepwise narrowing of KTRU candidates: domain -> name -> OKPD2 group -> each characteristic."""
 from __future__ import annotations
 
+import re
+
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -8,7 +10,7 @@ import numpy as np
 from rapidfuzz import fuzz, process
 from rapidfuzz.distance import Levenshtein  # noqa: F401  (kept for typo helpers)
 
-from app.catalog import Catalog, KtruEntry, norm, tokens
+from app.catalog import Catalog, KtruEntry, norm, stems_of, tokens
 from app.config import CHAR_ALIASES
 from app.models import Candidate, Issue, KtruCandidate, NarrowingStep
 from app.parser import RawKV
@@ -126,24 +128,54 @@ def _scores(query: str, names: list[str], toks: list[frozenset[str]]) -> np.ndar
     return base
 
 
-def correct_query(cat: Catalog, query: str, domain: str | None) -> tuple[str, list[Issue]]:
-    """Cheap typo fix: query words unknown to the domain vocabulary -> closest vocabulary word."""
-    vocab = cat.vocab(domain)
+def _typo_fix(cat: Catalog, w: str, domain: str | None, cutoff: float) -> str | None:
+    nw = norm(w)
+    if len(nw) < 4 or not nw.isalpha() or nw in cat.any_words(domain) or cat.known_form(nw, domain):
+        return None
+    cands = process.extract(nw, cat.vocab_list(domain), scorer=fuzz.ratio, score_cutoff=cutoff, limit=10)
+    if not cands:
+        return None
+    # fewest edits first; same length (substitution, e.g. voiced/voiceless swap) before insert/delete
+    best = min(cands, key=lambda c: (Levenshtein.distance(nw, c[0]), c[0][-2:] != nw[-2:],
+                                     abs(len(c[0]) - len(nw)), -c[1], c[0]))[0]
+    if best == nw or stems_of(best) & stems_of(nw):  # same stem = inflection, not a typo
+        return None
+    return best
+
+
+def correct_query(cat: Catalog, query: str, domain: str | None, text: str = "") -> tuple[str, list[Issue]]:
+    """Typo fix against the trusted vocabulary (KTRU + frequent portal words).
+
+    Product-name words are replaced in the query; other description words only get a warning.
+    Catches doubled/missing letters and voiced/voiceless swaps («производственый», «Шуруповерд»).
+    """
     out, issues = [], []
-    for w in query.split():
-        nw = norm(w)
-        if len(nw) < 4 or nw in vocab or nw.isdigit() or cat.known_form(nw, domain):
-            out.append(w)
-            continue
-        m = process.extractOne(nw, cat.vocab_list(domain), scorer=fuzz.ratio, score_cutoff=80)
-        if m and m[0] != nw and m[0][:-2] != nw[:-2]:  # same stem, other ending = inflection, not a typo
-            out.append(m[0])
+    seen: set[str] = set()
+    for k, w in enumerate(query.split()):
+        brand = (not re.fullmatch(r"[А-Яа-яЁё\-]+", w)) or (k > 0 and w[:1].isupper()) or (len(w) > 1 and w.isupper())
+        fix = None if brand else _typo_fix(cat, w, domain, 80)
+        out.append(fix or w)
+        seen.add(norm(w))
+        if fix:
             issues.append(Issue.make(
-                "typo", field="Наименование", value=w, expected=m[0], suggestions=[m[0]],
-                message=f"Возможная опечатка: «{w}» → «{m[0]}»", severity="warning",
+                "typo", field="Наименование", value=w, expected=fix, suggestions=[fix],
+                message=f"Возможная опечатка: «{w}» → «{fix}»", severity="warning",
             ))
-        else:
-            out.append(w)
+    for m_ in re.finditer(r"[\w\-\"«»]+", text or ""):
+        w = m_.group(0)
+        # skip brands/models (capitalised mid-text, quoted, with digits/latin) and hyphenated compounds
+        if (not re.fullmatch(r"[А-Яа-яЁё]{6,}", w) or (m_.start() > 0 and w[0].isupper())
+                or norm(w) in seen):
+            continue
+        seen.add(norm(w))
+        fix = _typo_fix(cat, w, domain, 86)
+        if fix and Levenshtein.distance(norm(w), fix) > 1:
+            fix = None
+        if fix:
+            issues.append(Issue.make(
+                "typo", field="Описание", value=w, expected=fix, suggestions=[fix],
+                message=f"Возможная опечатка: «{w}» → «{fix}»", severity="warning",
+            ))
     return " ".join(out), issues
 
 
@@ -175,7 +207,7 @@ def narrow_ktru(
         res.issues.append(Issue.make("missing", "Индекс КТРУ пуст — соберите catalog.db", severity="error"))
         return res
 
-    query, typo_issues = correct_query(cat, product, domain)
+    query, typo_issues = correct_query(cat, product, domain, text)
     res.issues.extend(typo_issues)
     # enrich by closest portal STE names (sorted tokens -> deterministic)
     ste = cat.ste_names.get(domain) or []

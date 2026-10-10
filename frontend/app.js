@@ -108,6 +108,7 @@ async function analyze(withChars, fromButton) {
     const data = await res.json();
     if (seq !== state.seq) return; // устаревший ответ
     if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Ошибка API");
+    state.sentText = text;
     render(data);
   } catch (e) {
     if (seq !== state.seq) return;
@@ -116,6 +117,127 @@ async function analyze(withChars, fromButton) {
     $("result").className = "result";
     $("result").innerHTML = `<div class="issue error">${escapeHtml(e.message)}</div>`;
   }
+}
+
+
+/* ---------- статусы кода и карточки (новый контракт + fallback) ---------- */
+const CODE_LABELS = { determined: "определён", ambiguous: "несколько вариантов", not_found: "не найден" };
+const KIND_LABELS = { unit: "единицы", autofix: "автоисправление", typo: "опечатка", translit: "транслит" };
+function codeStatus(data) {
+  let cs = data.code_status;
+  if (cs === "found") cs = "determined";
+  if (CODE_LABELS[cs]) return cs;
+  if (data.status === "not_found" || !data.best_ktru) return "not_found";
+  if (data.status === "ambiguous") return "ambiguous";
+  return "determined";
+}
+function completenessOf(data) {
+  const c = data.completeness;
+  if (c && c.required_total != null) return c;
+  const filled = (x) => String(x.value ?? "").trim() !== "";
+  const req = state.chars.filter((x) => x.required), opt = state.chars.filter((x) => !x.required);
+  return { required_total: req.length, required_filled: req.filter(filled).length, optional_total: opt.length, optional_filled: opt.filter(filled).length };
+}
+function cardStatus(data, issues, comp) {
+  if (["complete", "incomplete", "invalid"].includes(data.card_status)) return data.card_status;
+  if (data.status === "error" || issues.some((x) => x.severity === "error" && x.type !== "missing")) return "invalid";
+  if (data.status === "not_found" || comp.required_filled < comp.required_total || issues.some((x) => x.type === "missing")) return "incomplete";
+  return "complete";
+}
+function statusBadges(data, issues) {
+  const cs = codeStatus(data);
+  const comp = completenessOf(data);
+  const card = cardStatus(data, issues, comp);
+  const nMiss = Math.max(0, (comp.required_total || 0) - (comp.required_filled || 0));
+  const cardText = card === "complete" ? "заполнена" : card === "invalid" ? "есть ошибки" : nMiss ? `не хватает обязательных: ${nMiss}` : "неполная";
+  const cls = (v) => (v === "determined" || v === "complete" ? "good" : v === "not_found" || v === "invalid" ? "bad" : "mid");
+  return `<div class="sbadges"><span class="sbadge ${cls(cs)}" id="codeBadge">Код: ${CODE_LABELS[cs]}</span>
+    <span class="sbadge ${cls(card)}" id="cardBadge">Карточка: ${cardText}</span></div>
+    <div class="muted small" id="complLine">${comp.required_filled}/${comp.required_total} обязательных, ${comp.optional_filled}/${comp.optional_total} необязательных</div>`;
+}
+function nextStepsBlock(data) {
+  let items = Array.isArray(data.next_steps_detail) && data.next_steps_detail.length
+    ? data.next_steps_detail.map((x) => (typeof x === "string" ? { text: x, required: true } : { text: x.text || "", required: x.required !== false }))
+    : (data.next_steps || []).map((x) => ({ text: String(x), required: true }));
+  if (!items.length) return "";
+  items = [...items.filter((x) => x.required), ...items.filter((x) => !x.required)];
+  return `<div class="block"><h2>Что сделать дальше</h2><ul class="next">${items
+    .map((x) => `<li class="${x.required ? "req" : "opt"}">${escapeHtml(x.text)}${x.required ? "" : ' <span class="muted">(необязательно)</span>'}</li>`).join("")}</ul></div>`;
+}
+
+/* ---------- было → стало ---------- */
+function correctionsList(data) {
+  if (Array.isArray(data.corrections)) return data.corrections.map((c) => ({ field: c.field || "", kind: c.kind || "", from: String(c.from ?? ""), to: String(c.to ?? "") })).filter((c) => c.from !== c.to);
+  // fallback: user_input против value+unit
+  const out = [];
+  for (const c of state.chars) {
+    const v = String(c.value ?? "").trim();
+    if (!c.user_input || !v) continue;
+    const to = (v + (c.unit ? " " + c.unit : "")).trim();
+    const ui = norm(c.user_input);
+    if (ui.includes(norm(to)) || (ui.includes(norm(v)) && (!c.unit || ui.includes(norm(c.unit))))) continue;
+    out.push({ field: c.name, kind: /^\d/.test(v) ? "unit" : "autofix", from: c.user_input, to });
+  }
+  return out;
+}
+function correctionsBlock(data) {
+  const list = correctionsList(data);
+  if (!list.length) return "";
+  return `<div class="block" id="corrBlock"><h2>Было → стало</h2>${list.map((c) => `<div class="corr">
+    <span class="kind">${escapeHtml(KIND_LABELS[c.kind] || c.kind || "исправление")}</span>
+    ${c.field ? `<b>${escapeHtml(c.field)}:</b> ` : ""}<span class="from">${escapeHtml(c.from)}</span> → <span class="to">${escapeHtml(c.to)}</span></div>`).join("")}</div>`;
+}
+
+/* ---------- подсветка фрагментов в тексте ---------- */
+// Фрагменты берутся по span из текста запроса (data.input_text), затем ищутся в ТЕКУЩЕМ тексте
+// буквально (ближайшее к исходной позиции вхождение) — так подсветка не съезжает при наборе.
+function collectMarks(data) {
+  const src = String(data.input_text ?? state.sentText ?? "");
+  const marks = [];
+  for (const raw of data.issues || []) {
+    const i = normIssue(raw);
+    if (i.type === "missing") continue;
+    let frag = "", pos = -1;
+    if (Array.isArray(raw.span) && raw.span.length === 2 && raw.span[1] > raw.span[0]) { frag = src.slice(raw.span[0], raw.span[1]); pos = raw.span[0]; }
+    if (!frag && i.value && src.toLowerCase().includes(String(i.value).toLowerCase())) frag = String(i.value);
+    if (!frag && i.field) {
+      const c = (data.characteristics || []).find((x) => norm(x.name) === norm(i.field));
+      if (c && Array.isArray(c.span) && c.span[1] > c.span[0]) { frag = src.slice(c.span[0], c.span[1]); pos = c.span[0]; }
+      else if (c && c.user_input) frag = c.user_input;
+    }
+    if (!frag.trim()) continue;
+    marks.push({ frag, pos, sev: i.severity === "error" ? "error" : "warning", msg: i.message || i.type });
+  }
+  return marks;
+}
+function drawHighlight() {
+  const box = $("hl");
+  if (!box) return;
+  const text = $("text").value;
+  const marks = state.data ? collectMarks(state.data) : [];
+  const ranges = [];
+  const low = text.toLowerCase();
+  for (const m of marks) {
+    const f = m.frag.toLowerCase();
+    let best = -1, at = low.indexOf(f);
+    while (at >= 0) { if (best < 0 || Math.abs(at - m.pos) < Math.abs(best - m.pos)) best = at; at = low.indexOf(f, at + 1); }
+    if (best < 0) continue;
+    const r = { s: best, e: best + f.length, sev: m.sev, msg: m.msg };
+    const ov = ranges.find((x) => r.s < x.e && x.s < r.e);
+    if (ov) { if (r.sev === "error") ov.sev = "error"; ov.msg += "; " + r.msg; ov.s = Math.min(ov.s, r.s); ov.e = Math.max(ov.e, r.e); }
+    else ranges.push(r);
+  }
+  if (!ranges.length) { box.hidden = true; box.innerHTML = ""; return; }
+  ranges.sort((a, b) => a.s - b.s);
+  let html = "", p = 0;
+  for (const r of ranges) {
+    if (r.s < p) continue;
+    html += escapeHtml(text.slice(p, r.s)) + `<mark class="${r.sev}" title="${escapeHtml(r.msg)}">${escapeHtml(text.slice(r.s, r.e))}</mark>`;
+    p = r.e;
+  }
+  html += escapeHtml(text.slice(p));
+  box.hidden = false;
+  box.innerHTML = html;
 }
 
 /* ---------- render ---------- */
@@ -246,21 +368,22 @@ function draw() {
        <div class="muted" style="margin-top:6px">Код КТРУ — это группа товаров; цены на конкретную СТЕ задают поставщики, по ним считается референтная цена.</div></div>`
     : "";
   const ib = issuesBlock(issues);
-  const next = data.next_steps && data.next_steps.length
-    ? `<div class="block"><h2>Что сделать дальше</h2><ul class="next">${data.next_steps.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>`
-    : "";
+  const next = nextStepsBlock(data);
   const elapsed = data.debug && data.debug.elapsed_ms != null ? `<span class="muted"> · ${data.debug.elapsed_ms} мс</span>` : "";
 
   $("result").className = "result";
   $("result").innerHTML = `
+    ${statusBadges(data, issues)}
     <div class="block"><h2>Распознано${elapsed}</h2>
       <div class="muted">Категория: <b>${escapeHtml(data.detected_domain || "—")}</b> · Товар: <b>${escapeHtml(data.product_guess || "—")}</b></div></div>
     ${best}
     <div class="block"><h2>Характеристики</h2>${charsTable(issues)}${state.dirty.size ? `<div class="hint" id="ovNote">Изменено в таблице: ${state.dirty.size}${state.textNote ? " · правки таблицы имеют приоритет над текстом" : ""} <button class="btn ghost small" id="resetOv">Сбросить правки таблицы</button></div>` : ""}</div>
+    ${correctionsBlock(data)}
     <div class="block"><h2>Подсказки</h2>${ib.html}</div>
     <div class="block"><h2>Сужение кодов КТРУ</h2>${funnelBlock(steps, candidates)}</div>
     ${next}`;
   bind(ib.other);
+  drawHighlight();
 
   if (focus) {
     const el = $("result").querySelector(`[data-i="${focus.i}"][data-k="${focus.k}"]`);
@@ -382,6 +505,7 @@ function syncText(row, k, prev, next) {
   ta.value = ta.value.slice(0, at) + newFrag + ta.value.slice(at + frag.length);
   row.user_input = newFrag;
   state.baseText = ta.value;
+  drawHighlight();
 }
 function refreshNote() {
   const n = $("ovNote");
@@ -409,6 +533,7 @@ $("run").onclick = () => { clearTimeout(state.timer); analyze(false, true); };
 $("text").addEventListener("input", (e) => {
   const t = e && e.inputType || "";
   if (t === "insertFromPaste" || t === "insertFromDrop" || t === "insertReplacementText") resetOverrides();
+  drawHighlight();
   schedule(false);
 });
 $("domain").addEventListener("change", () => schedule(false));
@@ -418,5 +543,6 @@ $("clear").onclick = () => {
   state.data = null; state.chars = []; resetOverrides(); state.lastKey = null;
   $("status").className = "status idle"; $("status").textContent = "Введите описание товара";
   $("result").className = "result empty"; $("result").textContent = "Здесь появится результат проверки";
+  drawHighlight();
 };
 loadDemos().catch(console.error);
