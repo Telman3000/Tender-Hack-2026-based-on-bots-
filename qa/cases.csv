@@ -16,7 +16,7 @@ CL14,clothing,error,Kurtka zimnyaya muzhskaya razmer 50,14.13,need_more|ambiguou
 CL15,clothing,error,Футболка хлопок 300% размер 48-50,14.14.3,need_more|ambiguous|error,impossible composition
 FU16,furniture,clean,Стол офисный угловой письменный столешница ЛДСП толщина 16 мм размер 1200х750х1200 мм кромка ПВХ,31.01,ok|ambiguous|need_more,portal: Стол офисный угловой; need_more allowed: required char absent from query: Тип каркаса/Вид материала каркаса
 FU17,furniture,clean,Стул офисный обивка ткань цвет черный высота 820 мм глубина 530 мм масса 4 кг,31.01,ok|ambiguous|need_more,portal: Стул Дебют Серна; need_more allowed: required char absent from query: Наличие мягкого сиденья/спинки
-FU18,furniture,clean,Шкаф металлический для документов сварной высота 660 мм ширина 420 мм глубина 350 мм масса 19 кг 2 полки,31.01,ok|ambiguous,portal: Шкаф КБС-011Т
+FU18,furniture,clean,Шкаф металлический для документов сварной высота 660 мм ширина 420 мм глубина 350 мм масса 19 кг 2 полки,31.01,ok|ambiguous|need_more,"portal: Шкаф КБС-011Т; need_more allowed: top code 31.01.11.122 «Шкаф архивный металлический» (ACTIVE) requires «Тип дверей шкафа», absent from query"
 FU19,furniture,clean,Кресло офисное обивка ткань цвет черный высота 1080 мм ширина 650 мм глубина 450 мм,31.01,ok|ambiguous,portal: Кресло Протон Стимул Люкс
 FU20,furniture,clean,Стеллаж металлический высота 2000 мм ширина 1000 мм глубина 300 мм 6 полок нагрузка на полку 100 кг,31.09.11.120,ok|ambiguous,portal: Стеллаж УНИВЕРСАЛ; GT 31.01->31.09.11.120 (verified vs ACTIVE KTRU XML)
 FU21,furniture,incomplete,Стол,31.0,need_more|ambiguous,no type/material/size
