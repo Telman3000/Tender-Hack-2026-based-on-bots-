@@ -1,12 +1,16 @@
-﻿"""UI acceptance: table edit -> request/response/text sync, reset button, not_found label.
+"""UI acceptance: table edit -> request/response/text sync, reset button, not_found label.
 Usage: python qa/ui_accept.py --base http://127.0.0.1:8000 --out ../qa_smoke/ui
 """
 from __future__ import annotations
-import argparse, json
+import argparse, json, re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 TEXT = "Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"
+
+
+def norm(s):  # ignore the latency label ("Распознано · 87 мс")
+    return re.sub(r"\d+(\.\d+)?\s*мс", "<ms>", s)
 
 
 def launch(p):
@@ -23,7 +27,7 @@ def main(base, out):
     rep, errs, calls = {}, [], []
     with sync_playwright() as p:
         b = launch(p); pg = b.new_page(viewport={"width": 1400, "height": 1000})
-        pg.on("console", lambda m: m.type == "error" and "favicon" not in (m.location or {}).get("url", "") and errs.append(m.text))
+        pg.on("console", lambda m: m.type == "error" and errs.append(m.text))
         pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.on("response", lambda r: "/api/analyze" in r.url and calls.append((r.request.post_data, r)))
         shot = lambda n: pg.screenshot(path=str(out / n), full_page=True)
@@ -55,11 +59,13 @@ def main(base, out):
         if btn.count():
             n = len(calls); btn.click(); pg.wait_for_timeout(3000); shot("03_after_reset.png")
             res1 = pg.inner_text("#result")
-            rep["reset"] = {"requests": len(calls) - n,
-                            "value_restored": pg.locator('#result [data-k="value"]').first.input_value(),
-                            "textarea": pg.input_value("#text"),
-                            "result_equals_initial": res1 == res0,
+            val = pg.locator('#result [data-k="value"]').first.input_value(); txt = pg.input_value("#text")
+            last = calls[-1][1].json() if len(calls) > n else {}
+            rep["reset"] = {"requests": len(calls) - n, "value_restored": val, "textarea": txt,
+                            "response_input_text": last.get("input_text"),
+                            "result_equals_initial": norm(res1) == norm(res0),
                             "note_gone": pg.locator("#ovNote").count() == 0}
+            rep["reset"]["PASS"] = (val == rep["first_value"] and txt == TEXT and norm(res1) == norm(res0))
         # not_found label
         pg.fill("#text", TEXT); pg.select_option("#domain", "clothing"); pg.click("#run"); pg.wait_for_timeout(2500)
         shot("04_not_found.png")
@@ -71,6 +77,8 @@ def main(base, out):
         shot("05_tools.png")
         r = pg.locator("#result")
         rep["general"] = {"badges": r.locator(".badge").count(), "funnel": r.locator(".funnel").count(), "rows": r.locator("tr").count()}
+        fav = pg.request.get(base + "/favicon.ico"); rep["favicon_status"] = fav.status
+        rep["favicon_link"] = pg.evaluate("() => [...document.querySelectorAll('link[rel*=icon]')].map(l => l.href)")
         b.close()
     rep["js_errors"] = errs
     (out / "ui_accept.json").write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
