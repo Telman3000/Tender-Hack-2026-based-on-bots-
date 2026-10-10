@@ -173,3 +173,24 @@ def test_metal_document_cabinet_not_clothes():
                                                domain_hint="furniture"))
     name = r.best_ktru.name.lower()
     assert "одежд" not in name and "деревян" not in name
+
+
+@needs_db
+@pytest.mark.parametrize("text", [
+    "Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый",
+    "Стол офисный ЛДСП",
+    "Стол письменный ЛДСП 1200х600х750 мм",
+])
+def test_office_desk_is_writing_desk(text):
+    r = CatalogEngine().analyze(AnalyzeRequest(text=text))
+    assert r.best_ktru.name == "Стол письменный"
+    vals = {c.name: c.value for c in r.characteristics}
+    assert vals.get("Вид материала столешницы") == "ЛДСП"
+    assert not vals.get("Вид материала каркаса")
+
+
+@needs_db
+def test_side_table_when_requested():
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Стол приставной ЛДСП"))
+    assert r.best_ktru.name == "Стол приставной"
+
