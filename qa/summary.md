@@ -33,7 +33,7 @@ as empty table rows (e.g. FU19 +3 rows, TO37 +2), unitless dimensions get «пр
 
 Run: 2026-10-10 12:41 MSK. Ground truth fixed and pushed BEFORE the run: holdout.csv in 0ebf4b8, errors.csv in 09e4eef; not edited after.
 
-## Holdout (qa/holdout.csv, 45 new portal items, 27 clean / 18 incomplete; none of the 45 dev-set item types or items)
+## Holdout (qa/holdout.csv, 45 new portal items, 27 clean / 18 incomplete; different portal items from the 45 dev cases, mostly different product types)
 GT = OKPD2 prefix of ACTIVE KTRU positions with the matching name (ktru XML). Two runs identical.
 
 | slice | top-1 | top-3 | status |
