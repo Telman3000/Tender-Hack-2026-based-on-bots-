@@ -182,3 +182,22 @@ Notes (PASS on safety, recognition bugs): B23/B24 an HTML tag before the text (�
 markup is escaped in the UI. Empty text: API 422 (B12), whitespace -> not_found; in the UI an empty submit sends no request.
 No CSV/batch endpoint or UI exists; 100 rows (45 dev + 45 holdout + 10 broken) through /api/analyze: 9.9 s sequential, 5.9 s with 4 parallel, codes 200/422 only.
 Very long text: 9.8k chars 130 ms, 98k chars 0.6 s.
+
+
+# Acceptance feature/ui 5dc532a (with dad33b5) on main 7aa9939 — 2026-10-10 20:16 MSK
+
+Fast-forward merge, no conflicts; diff touches only frontend/ (app.js, index.html, styles.css), docs/demo_batch.csv and docs/screens — no app/ changes.
+pytest 62 passed; dev 44/45 · 45/45 · 45/45, holdout 43/45 · 44/45 · 43/45 (unchanged). Real browser: headless Edge, port 8815; screenshots wt-qa/_out/ui-5dc532a/.
+- smoke, ui_accept (edit 750->900 syncs text, reset -> 750, not_found label), MANUAL_CHECK 7 steps, demo FU19->TO37->TO42->270: PASS, no JS errors.
+  (ui_accept now finds the «Высота» row by name: with the new KTRU->portal->new order the first row can be a select.)
+- Empty input: «Проверить» with empty or whitespace text sends no request and shows «Введите описание товара» with an example; the old result is cleared.
+- «Допишите ещё n (обязательных: k)»: k equals missing required from the API in 6/6 queries; n = required + empty optional.
+- Batch tab (qa/ui_batch.py, qa/make_batch.py, qa/batch100.csv = 45 dev + 45 holdout + 10 broken + blank lines):
+  demo_batch.csv 11 rows 1.9 s; batch100 utf-8 «;» with header 6.9 s; cp1251 «,» quoted, header «name» 6.3 s; utf-8 BOM, no header 6.2 s.
+  100/100 rows each, every row's code equals a single /api/analyze call, export CSV has header + all rows, row click opens it in the editor,
+  no alerts or injected <script>/<img> (XSS escaped), blank lines skipped, header variants detected.
+Bugs:
+1. Every batch run logs 2 console errors «Failed to load resource: 404» — the UI probes /api/analyze/batch?stream=1 and /api/analyze/batch,
+   which core does not have, then falls back to per-row calls (4 parallel). Works, but a jury opening DevTools sees red errors.
+2. Narrow width 420 px: page scrolls horizontally (scrollWidth 474 on the single view, 992 on the batch tab because of the wide table). Fine at 1280.
+3. A description containing «;» in a file that uses «;» is cut at the first «;» unless quoted (by design: only the first column is read).
