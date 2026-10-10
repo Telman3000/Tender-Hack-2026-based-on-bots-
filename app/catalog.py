@@ -201,6 +201,33 @@ class Catalog:
             cache[domain] = {w for w in v if len(w) >= 3 and not any(ch.isdigit() for ch in w)}
         return cache[domain]
 
+    def enum_values_by_name(self) -> dict[str, set[str]]:
+        """characteristic name (lower) -> every allowed value of it across active KTRU (normalised)."""
+        cache = self.__dict__.get("_enum_by_name")
+        if cache is None:
+            cache = {}
+            for e in self.entries:
+                for sp in e.specs.values():
+                    if sp.enums:
+                        cache.setdefault(sp.name.lower(), set()).update(norm(v) for v in sp.enums)
+            self.__dict__["_enum_by_name"] = cache
+        return cache
+
+    def any_words(self, domain: str | None) -> set[str]:
+        """Every word seen in KTRU or portal names (any frequency): such a word is never a typo."""
+        cache = self.__dict__.setdefault("_any_words", {})
+        if domain not in cache:
+            names = (self.ste_names.get(domain, []) if domain is not None
+                     else [n for lst in self.ste_names.values() for n in lst])
+            from collections import Counter
+
+            from app.config import COMMON_WORDS
+
+            cnt = Counter(w for n in names for w in n.split())
+            v = set(self.vocab(domain)) | {w for w, c in cnt.items() if c >= 2} | COMMON_WORDS
+            cache[domain] = v
+        return cache[domain]
+
     def vocab_list(self, domain: str | None) -> list[str]:
         cache = self.__dict__.setdefault("_vocab_l", {})
         if domain not in cache:

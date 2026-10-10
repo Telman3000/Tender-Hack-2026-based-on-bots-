@@ -130,7 +130,7 @@ def _scores(query: str, names: list[str], toks: list[frozenset[str]]) -> np.ndar
 
 def _typo_fix(cat: Catalog, w: str, domain: str | None, cutoff: float) -> str | None:
     nw = norm(w)
-    if len(nw) < 4 or not nw.isalpha() or cat.known_form(nw, domain):
+    if len(nw) < 4 or not nw.isalpha() or nw in cat.any_words(domain) or cat.known_form(nw, domain):
         return None
     cands = process.extract(nw, cat.vocab_list(domain), scorer=fuzz.ratio, score_cutoff=cutoff, limit=10)
     if not cands:

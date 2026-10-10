@@ -317,3 +317,33 @@ def test_typo_corrections(text, frm, to):
 def test_no_false_typos(text):
     assert not any(i.type == "typo" for i in _issues(text).issues)
 
+
+@needs_db
+def test_error_fix_steps_are_required():
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Ключ гаечный 170х190 мм длина 27 м"))
+    assert any(i.severity == "error" for i in r.issues)
+    fixes = [d for d in r.next_steps_detail if d.text.startswith("Исправьте")]
+    assert fixes and all(d.required for d in fixes)
+    assert all(d.text in r.next_steps for d in fixes)
+
+
+def test_adjective_to_noun_value_match():
+    from types import SimpleNamespace
+    from app.unify import _match_enum
+    sp = SimpleNamespace(enums=["Алюминий", "Дерево", "Металл"])
+    assert _match_enum(sp, ["алюминиевый", "профиль"], "алюминиевый профиль") == "Алюминий"
+    assert _match_enum(sp, ["деревянный"], "деревянный") == "Дерево"
+    assert _match_enum(sp, ["пластилин"], "пластилин") is None
+
+
+def test_value_runs_until_next_name_or_separator():
+    from app.unify import _phrase_words
+    ws = _phrase_words("Вид защиты от воды и масел, цвет синий")
+    assert [w for w, sg in ws if sg == 0][-1] == "масел"
+
+
+@needs_db
+def test_common_words_are_not_typos():
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Стол письменный ЛДСП, срок поставки 10 дней"))
+    assert not any(i.type == "typo" and (i.value or "").lower() == "поставки" for i in r.issues)
+

@@ -160,7 +160,8 @@ class CatalogEngine:
                 message=f"Описание набрано латиницей — распознано как «{text}». Проверьте и введите кириллицей",
             ))
         conv: list = []
-        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text, conv)
+        alts = [e for _, e in (nr.shown or [])[:10]]
+        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text, conv, alts)
         issues.extend(char_issues)
         next_steps = self._next_steps(nr, chars, issues)
         for i in issues:
@@ -193,7 +194,7 @@ class CatalogEngine:
 
         next_steps = list(dict.fromkeys(next_steps))[:10]
         req_fields = {c.name for c in chars if c.required}
-        detail = [NextStep(text=t, field=f, required=(f is None or f in req_fields))
+        detail = [NextStep(text=t, field=f, required=(f is None or f in req_fields or t.startswith("Исправьте")))
                   for t in next_steps for f in [_step_field(t)]]
         _add_spans(req.text, chars, issues, user_rows)
         corrections = _corrections(req.text, text, issues, conv)
