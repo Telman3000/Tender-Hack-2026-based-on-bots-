@@ -69,12 +69,18 @@ class CatalogEngine:
         raw, user_rows = self._merge(raw, req)
 
         filled = [r for r in raw if r.value]
-        nr = narrow_ktru(self.catalog, product, filled, domain, domain_detected=domain is not None)
+        nr = narrow_ktru(self.catalog, product, filled, domain, domain_detected=domain is not None, text=text)
         if req.characteristics and nr.best is not None:
             raw = self._dedupe_by_canonical(raw, user_rows, nr.best)
             filled = [r for r in raw if r.value]
         issues = list(nr.issues)
-        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows)
+        if text != req.text:
+            issues.append(Issue.make(
+                "typo", field="Наименование", value=req.text, expected=text, suggestions=[text],
+                severity="warning",
+                message=f"Описание набрано латиницей — распознано как «{text}». Проверьте и введите кириллицей",
+            ))
+        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text)
         issues.extend(char_issues)
         next_steps = list(nr.next_steps)
         for i in issues:

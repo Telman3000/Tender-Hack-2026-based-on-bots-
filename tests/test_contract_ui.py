@@ -122,3 +122,33 @@ def test_furniture_composite_maps_to_ktru_names(eng):
     r = eng.analyze(AnalyzeRequest(text="Стол письменный 1200х600х750 мм ЛДСП", domain_hint="furniture"))
     vals = {c.value for c in r.characteristics}
     assert {"1200", "600", "750"} <= vals
+
+
+@needs_db
+def test_required_filled_from_text(eng):
+    cases = [
+        ("Отвертка аккумуляторная напряжение 3.6 В масса 900 г 1 скорость", "tools", "Тип питания"),
+        ("Куртка зимняя Аляска удлиненная черная мужская размер 48-50 рост 170-176 подкладка полиэстер",
+         "clothing", "Российский размер"),
+    ]
+    for text, dom, name in cases:
+        r = eng.analyze(AnalyzeRequest(text=text, domain_hint=dom))
+        row = [c for c in r.characteristics if c.name == name]
+        assert row and row[0].value, (name, [(c.name, c.value) for c in r.characteristics])
+        assert not any(i.type == "missing" and i.field == name for i in r.issues)
+
+
+@needs_db
+def test_no_false_typo_for_inflections(eng):
+    r = eng.analyze(AnalyzeRequest(text="Стол офисный ЛДСП высота 750 мм", domain_hint="furniture"))
+    assert not any(i.type == "typo" for i in r.issues), [i.message for i in r.issues if i.type == "typo"]
+    r = eng.analyze(AnalyzeRequest(text="стол офсный дсп", domain_hint="furniture"))
+    assert any(i.type == "typo" and i.value == "офсный" for i in r.issues)
+
+
+@needs_db
+def test_single_word_tools_without_hint(eng):
+    r = eng.analyze(AnalyzeRequest(text="Дрель"))
+    assert r.best_ktru.code.startswith("28.24.1"), r.best_ktru
+    r = eng.analyze(AnalyzeRequest(text="Отвертка"))
+    assert r.best_ktru.code.startswith(("25.73.3", "28.24.1")), r.best_ktru

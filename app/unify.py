@@ -3,12 +3,56 @@ from __future__ import annotations
 
 from rapidfuzz import fuzz, process
 
-from app.catalog import Catalog, KtruEntry
+from app.catalog import Catalog, KtruEntry, norm
 from app.config import CHAR_ALIASES
 from app.models import CharSource, Issue, ParsedCharacteristic
 from app.parser import RawKV, canonicalize_name
 from app.units import canon_unit
 from app.validate import check_value, is_numeric_spec, numeric_view, sanity_issues
+
+
+_STOP = {"для", "или", "без", "при", "под", "над", "от", "из", "на", "по", "со"}
+
+
+def _stem(w: str) -> str:
+    return w[:6] if len(w) > 6 else w
+
+
+# description word -> KTRU value word
+_VALUE_SYNONYMS = {"ткань": "текстиль", "тканевая": "текстиль", "тканевый": "текстиль",
+                   "кожзам": "искусственная", "экокожа": "экокожа", "аккумуляторная": "аккумуляторных",
+                   "аккумуляторный": "аккумуляторных"}
+
+
+def _text_stems(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for w in norm(text).split():
+        if len(w) >= 3 and w not in _STOP:
+            out.setdefault(_stem(w), w)
+            syn = _VALUE_SYNONYMS.get(w)
+            if syn:
+                out.setdefault(_stem(syn), w)
+    return out
+
+
+def _enum_from_text(spec, stems: dict[str, str]) -> tuple[str, str] | None:
+    """Pick the allowed KTRU value whose significant words occur in the description."""
+    best, best_sc, tie = None, 0.0, False
+    for e in dict.fromkeys(spec.enums):
+        ws = [w for w in norm(e).split() if len(w) >= 3 and w not in _STOP]
+        if not ws:
+            continue
+        hit = [stems[_stem(w)] for w in ws if _stem(w) in stems]
+        if not hit:
+            continue
+        sc = len(hit) / len(ws) + 0.01 * len(hit)
+        if sc > best_sc + 1e-9:
+            best, best_sc, tie = (e, " ".join(hit)), sc, False
+        elif abs(sc - best_sc) <= 1e-9:
+            tie = True
+    if best and not tie and best_sc >= 0.5:
+        return best
+    return None
 
 
 def unify_characteristics(
@@ -17,6 +61,7 @@ def unify_characteristics(
     domain: str | None,
     best: KtruEntry | None,
     user_rows: set[str] | None = None,
+    text: str = "",
 ) -> tuple[list[ParsedCharacteristic], list[Issue]]:
     issues: list[Issue] = []
     out: list[ParsedCharacteristic] = []
@@ -85,8 +130,20 @@ def unify_characteristics(
 
     # required KTRU characteristics not provided
     if best:
+        stems = _text_stems(text)
         for k, sp in best.specs.items():
             if not sp.required or k in used:
+                continue
+            found = _enum_from_text(sp, stems) if sp.enums else None
+            if found:
+                value, words = found
+                out.append(ParsedCharacteristic(
+                    name=sp.name, raw_name=sp.name, canonical_name=sp.name, value=value,
+                    unit=None, source=CharSource.KTRU, required=True, allowed=sp.allowed_enums(),
+                    user_input=words, confidence=0.8,
+                    notes="Значение найдено в описании по допустимым значениям КТРУ",
+                ))
+                used.add(k)
                 continue
             lo, hi, nu = numeric_view(sp, domain) if is_numeric_spec(sp) else (None, None, canon_unit(sp.unit) or sp.unit)
             out.append(ParsedCharacteristic(

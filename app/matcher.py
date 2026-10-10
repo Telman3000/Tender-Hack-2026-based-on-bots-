@@ -42,6 +42,7 @@ WORK_STEMS = ("рабоч", "спец", "уборщ", "производстве�
 QUALIFIER_STEMS = (
     "кож", "=мех", "=меха", "=мехом", "мехов", "детск", "женск", "мужск", "резин", "пластик", "пациент", "хирург", "операцион",
     "процедур", "изолир", "одноразов", "многоразов", "ученич", "лаборатор", "клавиш", "библиотеч",
+    "механическ",
 )
 # head noun -> generic KTRU name used for that kind of goods
 HEAD_SYNONYMS = {
@@ -65,6 +66,11 @@ PROTECTION_STEMS = ("изолир", "защит", "хирург", "сигнал�
 
 def work_signal(query: str) -> bool:
     return any(w.startswith(st) for w in norm(query).split() for st in WORK_STEMS)
+
+
+# hand tools that have no own KTRU position
+HAND_SYNONYMS = {"отвертк": "инструмент ручной прочий", "отвёртк": "инструмент ручной прочий",
+                 "напильник": "инструмент ручной прочий", "ножовк": "инструмент ручной прочий"}
 
 
 def power_signal(query: str, raw: list[RawKV]) -> bool:
@@ -123,11 +129,11 @@ def correct_query(cat: Catalog, query: str, domain: str | None) -> tuple[str, li
     out, issues = [], []
     for w in query.split():
         nw = norm(w)
-        if len(nw) < 4 or nw in vocab or nw.isdigit():
+        if len(nw) < 4 or nw in vocab or nw.isdigit() or cat.known_form(nw, domain):
             out.append(w)
             continue
         m = process.extractOne(nw, cat.vocab_list(domain), scorer=fuzz.ratio, score_cutoff=80)
-        if m and m[0] != nw:
+        if m and m[0] != nw and m[0][:-2] != nw[:-2]:  # same stem, other ending = inflection, not a typo
             out.append(m[0])
             issues.append(Issue.make(
                 "typo", field="Наименование", value=w, expected=m[0], suggestions=[m[0]],
@@ -149,7 +155,11 @@ def narrow_ktru(
     raw: list[RawKV],
     domain: str | None,
     domain_detected: bool = True,
+    text: str | None = None,
 ) -> NarrowResult:
+    from app.unify import _enum_from_text, _text_stems
+
+    text_stems = _text_stems(text) if text else None
     res = NarrowResult()
     pool = cat.pool(domain if domain_detected else None)
     n0 = len(pool)
@@ -180,6 +190,12 @@ def narrow_ktru(
     s1 = _scores(query, names, toks)
     if enriched != query:
         s1 = np.maximum(s1, _scores(enriched, names, toks) * 0.9)
+    head_q = norm(query).split()[0] if norm(query) else ""
+    if domain in ("tools", None) and not power_signal(product, raw):
+        hsyn = next((v for k, v in HAND_SYNONYMS.items() if head_q.startswith(k)), None)
+        if hsyn:
+            s1 = np.maximum(s1, _scores(hsyn, names, toks) + 20.0
+                            * np.array([n.startswith(hsyn) for n in names], dtype=float))
     if domain in ("tools", None) and power_signal(product, raw):
         head = norm(query).split()[0] if norm(query) else ""
         syn = next((v for k, v in POWER_SYNONYMS.items() if head.startswith(k)), None)
@@ -286,6 +302,13 @@ def narrow_ktru(
         ))
         step_no += 1
 
+    # variant choice inside a group: allowed values of required characteristics found in the text
+    if text_stems is not None:
+        for c in cands:
+            for sp in c[1].specs.values():
+                if sp.required and sp.enums and _enum_from_text(sp, text_stems):
+                    c[0] += 6.0
+                    c[2].append(sp.name)
     cands.sort(key=lambda x: (-x[0], x[1].code))
     top = cands[0][0]
     group = [(s, e) for s, e, _ in cands if s >= top - GROUP_BAND]

@@ -148,6 +148,13 @@ class Catalog:
         for k, sp in entry.specs.items():
             if k.startswith(key + " ") or k.split(",")[0] == key:
                 return sp
+        # whole-word containment: «размер» -> «Российский размер», «длина» -> «Длина губок»
+        nk = norm(key)
+        if nk:
+            hits = [sp for k, sp in entry.specs.items() if f" {nk} " in f" {norm(k)} "
+                    and not (sp.enums and {norm(e) for e in sp.enums} <= {"да", "нет"})]
+            if hits:
+                return sorted(hits, key=lambda sp: (len(sp.name), sp.name))[0]
         m = process.extractOne(key, list(entry.specs.keys()), scorer=fuzz.ratio, score_cutoff=88)
         if m:
             best = entry.specs[m[0]]
@@ -200,3 +207,18 @@ class Catalog:
                 dtype=float,
             )
         return cache[key]
+
+    def known_form(self, word: str, domain: str | None) -> bool:
+        """Word is an inflection of a vocabulary word (same stem, ending differs by <= 3 chars)."""
+        cache = self.__dict__.setdefault("_stems", {})
+        if domain not in cache:
+            st: set[str] = set()
+            for w in self.vocab(domain):
+                if len(w) >= 5:
+                    st.add(w[: max(4, len(w) - 3)])
+            cache[domain] = st
+        st = cache[domain]
+        for cut in range(max(4, len(word) - 3), len(word) + 1):
+            if word[:cut] in st:
+                return True
+        return False
