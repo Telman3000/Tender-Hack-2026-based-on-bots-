@@ -7,6 +7,13 @@
 обязательные характеристики. Домены: мебель, одежда, инструменты. Порядок источников
 характеристик: КТРУ → частотные характеристики портала → новое свойство. Без LLM и внешних API.
 
+Опечатки и английская раскладка исправляются во всём тексте («vjkjnjr» → «молоток»,
+«металический» → «металлический»). Числа, которые КТРУ не ограничивает, сверяются с типичными
+значениями в карточках портала того же товара («шкаф высотой 5 мм» — ошибка). Признаки да/нет
+(«из натуральной кожи», «без подлокотников») выбирают вариант кода. Если подходят несколько
+вариантов одного кода, сервис спрашивает характеристику, которой они различаются, и предлагает
+её значения.
+
 ## Требования
 
 - Python **3.11** (проверено на 3.11.9; на Linux тесты без базы прошли и на 3.13).
@@ -14,7 +21,8 @@
 - RAM: сборка индекса — пик ~410 МБ, сервер — ~130 МБ после загрузки каталога.
   Рекомендуется от 2 ГБ свободной памяти.
 - Диск: ~160 МБ архив материалов + ~120 МБ `catalog.db` + ~250 МБ venv.
-- Зависимости: `requirements.txt` (FastAPI, uvicorn, pydantic, rapidfuzz, numpy, lxml, openpyxl, pytest).
+- Зависимости: `requirements.txt` (FastAPI, uvicorn, pydantic, rapidfuzz, pymorphy3 со словарём
+  OpenCorpora, numpy, lxml, openpyxl, pytest).
 
 ## Данные
 
@@ -91,10 +99,10 @@ docker compose up --build      # http://127.0.0.1:8000/
 ## Проверка
 
 ```bash
-python -m pytest -q            # 35 passed (без catalog.db часть тестов пропускается)
+python -m pytest -q            # 43 passed (без catalog.db часть тестов пропускается)
 curl -s -X POST http://127.0.0.1:8000/api/analyze -H "Content-Type: application/json" \
      -d '{"text":"Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"}'
-python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и qa/summary.md
+python qa/run_eval.py          # 55 кейсов, пишет qa/results.csv и qa/summary.md
 ```
 
 В PowerShell тело запроса удобнее передать файлом: `curl.exe ... --data-binary "@req.json"`
@@ -136,7 +144,7 @@ python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и q
 Статус: `not_found` > `error` > `need_more` > `ambiguous` > `ok`. Время ответа: 50–100 мс
 (QA: p50 ≈ 52 мс, p95 ≈ 130 мс).
 
-QA (45 кейсов): верный код в топ-1 98%, в топ-3 100%.
+QA (55 кейсов): верный код в топ-1 98%, в топ-3 100%, верный статус 100%.
 
 ## Частые проблемы
 
@@ -152,9 +160,10 @@ QA (45 кейсов): верный код в топ-1 98%, в топ-3 100%.
 ## Структура проекта
 
 ```
-app/        main.py (FastAPI, UI), engine.py (оркестрация), parser.py (разбор текста),
-            unify.py (сопоставление с КТРУ), matcher.py (пошаговое сужение), validate.py,
-            units.py, catalog.py (кэш каталога), db.py, models.py, config.py
+app/        main.py (FastAPI, UI), engine.py (оркестрация), spell.py (раскладка и опечатки),
+            parser.py (разбор текста), unify.py (сопоставление с КТРУ), matcher.py (пошаговое
+            сужение), validate.py, morph.py (словоформы, признаки да/нет), units.py,
+            catalog.py (кэш каталога, типичные значения портала), db.py, models.py, config.py
 scripts/    build_index.py — сборка data/processed/catalog.db
 frontend/   index.html, app.js, styles.css
 tests/      pytest

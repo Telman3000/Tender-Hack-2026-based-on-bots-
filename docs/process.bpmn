@@ -8,10 +8,10 @@
 </bpmn:laneSet>
 <bpmn:startEvent id="start" name="Нужен товар"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
 <bpmn:task id="t_input" name="Ввести описание в свободной форме"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:task>
-<bpmn:task id="t_parse" name="Разобрать текст (parser)"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing></bpmn:task>
+<bpmn:task id="t_parse" name="Исправить опечатки и разобрать текст (spell, parser)"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing></bpmn:task>
 <bpmn:task id="t_unify" name="Унифицировать названия и единицы (unifier)"><bpmn:incoming>f3</bpmn:incoming><bpmn:incoming>f11</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing></bpmn:task>
 <bpmn:task id="t_index" name="Поиск в индексе КТРУ и портала (SQLite)"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:task>
-<bpmn:task id="t_match" name="Сузить коды и проверить значения (matcher, engine)"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:task>
+<bpmn:task id="t_match" name="Сузить коды, проверить по КТРУ и порталу (matcher)"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:task>
 <bpmn:task id="t_resp" name="Сформировать ответ: подсказки, воронка, кандидаты"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing></bpmn:task>
 <bpmn:task id="t_review" name="Просмотреть таблицу, подсказки и воронку"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing></bpmn:task>
 <bpmn:exclusiveGateway id="gw" name="Всё верно?"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f9</bpmn:outgoing><bpmn:outgoing>f10</bpmn:outgoing></bpmn:exclusiveGateway>

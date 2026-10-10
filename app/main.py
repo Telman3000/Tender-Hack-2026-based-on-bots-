@@ -80,6 +80,26 @@ def demo_cases():
             "text": "молоток",
             "domain_hint": "tools",
         },
+        {
+            "title": "Опечатки, высота 5 мм",
+            "text": "Шкав металический для дакументов высота 5 мм",
+            "domain_hint": "furniture",
+        },
+        {
+            "title": "Английская раскладка",
+            "text": "vjkjnjr cktcfhysq",
+            "domain_hint": "tools",
+        },
+        {
+            "title": "Значения нет в КТРУ",
+            "text": "Стол письменный, материал столешницы бетон",
+            "domain_hint": "furniture",
+        },
+        {
+            "title": "Куртка из натуральной кожи",
+            "text": "Куртка мужская из натуральной кожи размер 50",
+            "domain_hint": "clothing",
+        },
     ]
 
 

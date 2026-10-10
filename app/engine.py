@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 import time
 
-from app.catalog import Catalog
+from app.catalog import Catalog, KtruEntry, norm
 from app.config import CHAR_ALIASES
 from app.db import connect, db_ready
-from app.matcher import OK_MARGIN, candidates_view, narrow_ktru, _cand
-from app.models import AnalyzeRequest, AnalyzeResponse, Issue
+from app.matcher import OK_MARGIN, candidates_view, narrow_ktru, variant_question, _cand
+from app.models import AnalyzeRequest, AnalyzeResponse, CharSource, Issue, ParsedCharacteristic
+from app.morph import STOP
 from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text, translit_if_latin
+from app.spell import Speller
 from app.unify import unify_characteristics
+from app.validate import typical_issue
+
+_LATIN_WORD = re.compile(r"[A-Za-z]{3,}")
 
 
 class CatalogEngine:
@@ -17,9 +23,11 @@ class CatalogEngine:
         self._own_conn = conn is None
         self.conn = conn or connect()
         self.catalog: Catalog | None = None
+        self.speller: Speller | None = None
         if db_ready():
             t = time.perf_counter()
             self.catalog = Catalog(self.conn)
+            self.speller = Speller(self.catalog.word_freq())
             self.load_ms = round((time.perf_counter() - t) * 1000)
 
     def close(self) -> None:
@@ -52,6 +60,44 @@ class CatalogEngine:
                       and self._canon_key(r.name, best) not in keys]
         return text_items + user_items
 
+    def _spellcheck(self, src: str) -> tuple[str, list[Issue]]:
+        text, fixes = self.speller.fix(src)
+        latin = translit_if_latin(src)
+        layout = sum(f.kind == "layout" for f in fixes)
+        if latin != src and layout * 2 < len(_LATIN_WORD.findall(src)):
+            text, _ = self.speller.fix(latin)
+            return text, [Issue.make(
+                "typo", value=src, expected=text, suggestions=[text], severity="warning",
+                message=f"Описание набрано латиницей — распознано как «{text}». Проверьте и введите кириллицей",
+            )]
+        issues = []
+        for f in fixes:
+            what = "Текст в английской раскладке" if f.kind == "layout" else "Возможная опечатка"
+            issues.append(Issue.make(
+                "typo", value=f.src, expected=f.dst, suggestions=[f.dst], severity="warning",
+                message=f"{what}: «{f.src}» → «{f.dst}»",
+            ))
+        return text, issues
+
+    def _portal_check(
+        self, chars: list[ParsedCharacteristic], issues: list[Issue], best: KtruEntry | None, query: list[str],
+    ) -> list[Issue]:
+        if not query:
+            return []
+        flagged = {(i.field or "").lower() for i in issues if i.type in ("unit", "mismatch", "out_of_range", "not_allowed")}
+        out = []
+        for c in chars:
+            if not c.value or {c.name.lower(), c.raw_name.lower()} & flagged:
+                continue
+            sp = self.catalog.find_spec(best, c.name) if best is not None and c.source == CharSource.KTRU else None
+            if sp is not None and (sp.enums or None not in sp.bounds()):
+                continue
+            unit, issue = typical_issue(c.name, c.value, c.unit, self.catalog.typical(query, c.name), query[0])
+            if issue:
+                c.unit = c.unit or unit
+                out.append(issue)
+        return out
+
     def analyze(self, req: AnalyzeRequest) -> AnalyzeResponse:
         t0 = time.perf_counter()
         if self.catalog is None:
@@ -62,7 +108,7 @@ class CatalogEngine:
                                    suggestions=["python -m scripts.build_index --materials <папка материалов>"])],
                 next_steps=["Собрать индекс из материалов хакатона"],
             )
-        text = translit_if_latin(req.text)
+        text, typo_issues = self._spellcheck(req.text)
         domain = detect_domain(text, req.domain_hint)
         product, raw = parse_free_text(text, domain)
         product = guess_product_name(text) or product
@@ -73,16 +119,30 @@ class CatalogEngine:
         if req.characteristics and nr.best is not None:
             raw = self._dedupe_by_canonical(raw, user_rows, nr.best)
             filled = [r for r in raw if r.value]
-        issues = list(nr.issues)
-        if text != req.text:
-            issues.append(Issue.make(
-                "typo", field="Наименование", value=req.text, expected=text, suggestions=[text],
-                severity="warning",
-                message=f"Описание набрано латиницей — распознано как «{text}». Проверьте и введите кириллицей",
-            ))
-        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text)
+        issues = typo_issues + list(nr.issues)
+        variants = [e for _, e in nr.group if nr.best is not None and e.name == nr.best.name]
+        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text, variants)
         issues.extend(char_issues)
-        next_steps = list(nr.next_steps)
+        query = [w for w in norm(nr.query or product).split() if w not in STOP and not w.isdigit()]
+        issues.extend(self._portal_check(chars, issues, nr.best, query))
+        for i in issues:
+            if i.type == "ambiguous" and i.value:
+                for t in typo_issues:
+                    i.value = i.value.replace(t.expected or t.value, t.value)
+                if i.value not in req.text:
+                    i.value = None
+        known = {c.name for c in chars if c.value}
+        next_steps = [s for s in nr.next_steps if not (s.startswith("Уточните: ") and s[len("Уточните: "):] in known)]
+        question = variant_question(self.catalog, nr.best, nr.group, chars, domain) if nr.best else None
+        if question:
+            field, values, n = question
+            issues = [i for i in issues if not (i.type == "missing" and i.field == field)]
+            pos = max((k + 1 for k, i in enumerate(issues) if i.type in ("typo", "ambiguous")), default=0)
+            issues.insert(pos, Issue.make(
+                "ambiguous", field=field, suggestions=values, severity="warning",
+                message=f"Подходящих кодов КТРУ «{nr.best.name}»: {n}. Они различаются характеристикой «{field}» — выберите значение",
+            ))
+            next_steps = [f"Выберите «{field}»: " + ", ".join(values[:3])] + [s for s in next_steps if s != f"Уточните: {field}"]
         for i in issues:
             if i.type == "missing" and i.field:
                 next_steps.append(f"Укажите: {i.field}")
@@ -107,7 +167,7 @@ class CatalogEngine:
                 ))
         else:
             status = "ok"
-        if not filled:
+        if not filled and not any(c.value for c in chars):
             issues.append(Issue.make(
                 "missing", "Не удалось выделить характеристики из текста", severity="warning",
                 suggestions=["Формат: «Стол офисный ЛДСП высота 750 мм цвет серый»"],

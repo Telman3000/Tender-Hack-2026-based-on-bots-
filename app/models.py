@@ -53,7 +53,7 @@ class Issue(BaseModel):
             self.suggestions = [self.suggestion]
         if not self.suggestion and self.suggestions:
             self.suggestion = self.suggestions[0]
-        self.suggestions = self.suggestions[:3]
+        self.suggestions = self.suggestions[:8 if self.type == "ambiguous" else 3]
 
     @classmethod
     def make(cls, type: str, message: str, **kw: Any) -> "Issue":

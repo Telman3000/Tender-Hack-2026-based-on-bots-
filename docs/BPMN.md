@@ -6,6 +6,7 @@
 
 ```
 [Start] UserSubmitsFreeText
+   → Task: FixLayoutAndTypos (раскладка; опечатки — словарь OpenCorpora + словарь КТРУ и портала)
    → Task: DetectDomain (furniture|clothing|tools)
    → Task: ParseFreeText (product + raw characteristics)
    → Task: UnifyCharacteristics
@@ -14,13 +15,14 @@
           2) Else match portal export char names
           3) Else register as NEW property
    → Task: ScoreKtruCandidates (name + domain pool)
-   → Task: NarrowByCharacteristics
+   → Task: NarrowByCharacteristics (значения из текста и признаки да/нет)
+   → Task: CheckValues (допустимые значения и диапазоны КТРУ, типичные значения в карточках портала)
    → Gateway: UniqueCode?
         YES → Task: CheckRequiredChars
                Gateway: MissingRequired?
                  YES → EndEvent: NeedMoreData (issues + next_steps)
                  NO  → EndEvent: KtruResolved
-        NO  → EndEvent: Ambiguous (top candidates + discriminator hints)
+        NO  → EndEvent: Ambiguous (вопрос по характеристике, которой различаются оставшиеся коды)
 ```
 
 ## Участники

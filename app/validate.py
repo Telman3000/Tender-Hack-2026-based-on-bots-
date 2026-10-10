@@ -7,7 +7,9 @@ from rapidfuzz import fuzz, process
 
 from app.catalog import CharSpec, norm
 from app.models import Issue
-from app.units import canon_unit, convert, dimension, expected_dimension, fmt, guess_unit, to_number
+from app.units import (
+    UNITS, _DIM_CANDIDATES, canon_unit, convert, dimension, expected_dimension, fmt, guess_unit, to_number,
+)
 
 # common-sense upper bounds when KTRU gives no range: domain -> dim -> (unit, max, label)
 _LIMITS = {
@@ -203,6 +205,45 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -
                 message=f"«{name}» = {value} {u} нереалистично для {what} (больше {fmt(hi)} {base_u})",
                 suggestions=[f"{value} {x}" for x in _DIM_HINT.get(dim, []) if x != u][:2], severity="error"))
     return out
+
+
+def typical_issue(
+    name: str, value: str, unit: str | None, typical: tuple[float, float, str, int] | None, product: str,
+) -> tuple[str | None, Issue | None]:
+    x = to_number(value)
+    if x is None or not typical:
+        return unit, None
+    lo, hi, tunit, n = typical
+    dim, tf = UNITS[tunit]
+    u = canon_unit(unit)
+    if u and dimension(u) != dim:
+        return unit, None
+    same = [tunit] + [c for c in _DIM_CANDIDATES.get(dim, []) if c != tunit]
+    span = f"{fmt(lo / tf)}–{fmt(hi / tf)} {tunit}"
+
+    def fits(c: str) -> bool:
+        return lo * 0.8 <= x * UNITS[c][1] <= hi * 1.25
+
+    if u and fits(u):
+        return unit, None
+    if not u:
+        guess = next((c for c in same if fits(c)), None)
+        if guess:
+            return guess, Issue.make(
+                "unit", field=name, value=value, expected=guess, suggestions=[f"{value} {guess}"],
+                severity="warning",
+                message=f"«{name}»: единица не указана — по карточкам портала это {value} {guess}",
+            )
+    tried = [u] if u else same
+    far = all(x * UNITS[c][1] < lo / 5 or x * UNITS[c][1] > hi * 5 for c in tried)
+    alt = [f"{value} {c}" for c in same if c != u and fits(c)]
+    shown = f"{value} {u}" if u else value
+    return unit, Issue.make(
+        "mismatch", field=name, value=shown, expected=span, suggestions=alt[:3],
+        severity="error" if far else "warning",
+        message=f"«{name}» = {shown} — нетипично для товара «{product}»: "
+                f"в {n} {'карточке' if n % 10 == 1 and n % 100 != 11 else 'карточках'} портала обычно {span}",
+    )
 
 
 _BASE_UNIT = {"length": "мм", "mass": "кг", "volume": "л", "power": "Вт", "voltage": "В", "charge": "А·ч"}

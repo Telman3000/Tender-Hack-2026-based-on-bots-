@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from app.config import CHAR_ALIASES, DOMAIN_KEYWORDS, UNIT_ALIASES
+from app.morph import adjective, genitive_noun
 
 
 @dataclass
@@ -11,6 +12,7 @@ class RawKV:
     name: str
     value: str
     unit: str | None = None
+    text: str | None = None
 
 
 _KV_COLON = re.compile(
@@ -44,6 +46,18 @@ _MATERIAL = re.compile(
     r"пластик(?:а)?|стекл[оа]|кож[аи]|ткан[ьи]|полиэстер|хлопок|сталь)",
     re.IGNORECASE,
 )
+
+
+_MAT_VALUE = r"(?P<value>(?!(?:из|для|и|с)\b)[а-яёa-z][а-яёa-z\-]{2,})(?:\s+(?P<next>[а-яё]+))?"
+_PART_MATERIAL = re.compile(
+    rf"\bматериала?\s+(?P<part>[а-яё]+)(?:\s*[:\-–—]\s*|\s+){_MAT_VALUE}", re.IGNORECASE,
+)
+_ANY_MATERIAL = re.compile(rf"\bматериал\s+{_MAT_VALUE}", re.IGNORECASE)
+
+
+def _material_value(m: re.Match) -> str:
+    value, nxt = m.group("value"), m.group("next")
+    return f"{value} {nxt}" if nxt and adjective(value) else value
 
 
 _WORD = re.compile(r"[a-zа-яё0-9]+", re.I)
@@ -220,6 +234,10 @@ def parse_free_text(text: str, domain: str | None = None) -> tuple[str, list[Raw
     for m in _KV_COLON.finditer(text):
         add(m.group("name"), m.group("value"))
 
+    for m in _PART_MATERIAL.finditer(text):
+        if genitive_noun(m.group("part")):
+            add(f"Материал {m.group('part').lower()}", _material_value(m))
+
     if domain == "furniture":
         for kv in composite_dimensions(text):
             add(kv.name, kv.value, kv.unit)
@@ -241,9 +259,14 @@ def parse_free_text(text: str, domain: str | None = None) -> tuple[str, list[Raw
     for m in _MATERIAL.finditer(text):
         add("Материал", m.group("value"))
 
+    if not any(x.name == "Материал" for x in found):
+        for m in _ANY_MATERIAL.finditer(text):
+            if not genitive_noun(m.group("value")):
+                add("Материал", _material_value(m))
+
     for token in ("ДСП", "МДФ", "ЛДСП"):
         if re.search(rf"\b{token}\b", text, re.I) and not any(
-            x.name.lower() == "материал" for x in found
+            x.name.lower().startswith("материал") for x in found
         ):
             add("Материал", token)
 

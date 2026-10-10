@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from rapidfuzz import fuzz, process
 
-from app.catalog import Catalog, KtruEntry, norm
+from app import morph
+from app.catalog import Catalog, CharSpec, KtruEntry, norm
 from app.config import CHAR_ALIASES
 from app.models import CharSource, Issue, ParsedCharacteristic
 from app.parser import RawKV, canonicalize_name
@@ -60,7 +61,7 @@ def _stems_for_spec(spec_key: str, text: str, windows: dict[str, list[str]]) -> 
     return _text_stems(" ".join(w for w in norm(text).split() if w not in foreign))
 
 
-def _enum_from_text(spec, stems: dict[str, str]) -> tuple[str, str] | None:
+def _enum_from_text(spec, stems: dict[str, str], full: bool = False) -> tuple[str, str] | None:
     """Pick the allowed KTRU value whose significant words occur in the description."""
     best, best_sc, tie = None, 0.0, False
     for e in dict.fromkeys(spec.enums):
@@ -68,7 +69,7 @@ def _enum_from_text(spec, stems: dict[str, str]) -> tuple[str, str] | None:
         if not ws:
             continue
         hit = [stems[_stem(w)] for w in ws if _stem(w) in stems]
-        if not hit:
+        if not hit or (full and len(hit) < len(ws)):
             continue
         sc = len(hit) / len(ws) + 0.01 * len(hit)
         if sc > best_sc + 1e-9:
@@ -80,6 +81,31 @@ def _enum_from_text(spec, stems: dict[str, str]) -> tuple[str, str] | None:
     return None
 
 
+def _material_issue(best: KtruEntry, name: str, value: str) -> Issue | None:
+    known = best.materials()
+    if known is None:
+        return None
+    r = check_value(known, value, None)
+    if r.ok:
+        return None
+    where = ", ".join(f"«{sp.name}»" for sp in best.material_specs()[:3])
+    return Issue.make(
+        "not_allowed", field=name, value=value, expected=", ".join(known.enums[:8]),
+        suggestions=r.issue.suggestions if r.issue else [], severity="warning",
+        message=f"«{value}» нет среди допустимых значений КТРУ {best.code} для {where} — "
+                f"проверьте, к какой характеристике относится материал",
+    )
+
+
+def _variant_values(key: str, spec: CharSpec, variants: list[KtruEntry]) -> list[str] | None:
+    values = list(spec.enums)
+    for e in variants:
+        other = e.specs.get(key)
+        if other is not None:
+            values.extend(other.enums)
+    return list(dict.fromkeys(values))[:50] or None
+
+
 def unify_characteristics(
     cat: Catalog,
     raw: list[RawKV],
@@ -87,6 +113,7 @@ def unify_characteristics(
     best: KtruEntry | None,
     user_rows: set[str] | None = None,
     text: str = "",
+    variants: list[KtruEntry] | None = None,
 ) -> tuple[list[ParsedCharacteristic], list[Issue]]:
     issues: list[Issue] = []
     out: list[ParsedCharacteristic] = []
@@ -94,7 +121,7 @@ def unify_characteristics(
     used: set[str] = set()
 
     for item in raw:
-        user_input = f"{item.name} {item.value}{' ' + item.unit if item.unit else ''}".strip()
+        user_input = item.text or f"{item.name} {item.value}{' ' + item.unit if item.unit else ''}".strip()
         value = (item.value or "").strip()
         unit = canon_unit(item.unit) or item.unit
         spec = cat.find_spec(best, item.name) if best else None
@@ -146,6 +173,10 @@ def unify_characteristics(
                     "new_property", field=pc.name, value=value, severity="warning",
                     message=f"Характеристика «{item.name}» не найдена в КТРУ и выгрузках — заведена как новая",
                 ))
+            if best and value and norm(item.name).startswith("материал"):
+                issue = _material_issue(best, pc.name, value)
+                if issue:
+                    issues.append(issue)
         if value:
             have = {(i.type, i.field) for i in issues}
             for i in sanity_issues(item.name, value, item.unit, domain):
@@ -156,8 +187,27 @@ def unify_characteristics(
     # required KTRU characteristics not provided
     if best:
         windows = _part_windows(text)
+        ws = morph.words(text)
+        optional: list[tuple[str, CharSpec]] = []
         for k, sp in best.specs.items():
-            if not sp.required or k in used:
+            if k in used:
+                continue
+            flag = morph.flag_answer(ws, sp.name) if sp.is_flag else None
+            if flag:
+                r = check_value(sp, flag[0], None, domain)
+                if r.issue:
+                    issues.append(r.issue)
+                out.append(ParsedCharacteristic(
+                    name=sp.name, raw_name=sp.name, canonical_name=sp.name, value=flag[0],
+                    unit=None, source=CharSource.KTRU, required=sp.required, allowed=sp.allowed_enums(),
+                    user_input=" ".join(ws[i] for i in flag[1]), confidence=0.8,
+                    notes="Признак найден в описании",
+                ))
+                used.add(k)
+                continue
+            if not sp.required:
+                if sp.enums:
+                    optional.append((k, sp))
                 continue
             found = _enum_from_text(sp, _stems_for_spec(k, text, windows)) if sp.enums else None
             if found:
@@ -171,16 +221,41 @@ def unify_characteristics(
                 used.add(k)
                 continue
             lo, hi, nu = numeric_view(sp, domain) if is_numeric_spec(sp) else (None, None, canon_unit(sp.unit) or sp.unit)
+            allowed = _variant_values(k, sp, variants or [])
             out.append(ParsedCharacteristic(
                 name=sp.name, raw_name="", canonical_name=sp.name, value="",
                 unit=nu, source=CharSource.KTRU, required=True,
-                allowed=sp.allowed_enums(), min=lo, max=hi, confidence=0.0,
+                allowed=allowed, min=lo, max=hi, confidence=0.0,
                 notes="Обязательная характеристика КТРУ — не заполнена",
             ))
             issues.append(Issue.make(
                 "missing", field=sp.name, severity="warning",
-                expected=", ".join((sp.allowed_enums() or [])[:5]) or None,
-                suggestions=(sp.allowed_enums() or [])[:3],
+                expected=", ".join((allowed or [])[:5]) or None,
+                suggestions=(allowed or [])[:3],
                 message=f"Не заполнена обязательная характеристика КТРУ «{sp.name}»",
             ))
-    return out, issues
+        taken = {w for c in out for w in morph.words(c.user_input)}
+        for k, sp in optional:
+            found = _enum_from_text(sp, _stems_for_spec(k, text, windows), full=True)
+            if found and not taken & set(morph.words(found[1])):
+                taken.update(morph.words(found[1]))
+                out.append(ParsedCharacteristic(
+                    name=sp.name, raw_name=sp.name, canonical_name=sp.name, value=found[0],
+                    unit=None, source=CharSource.KTRU, required=False, allowed=sp.allowed_enums(),
+                    user_input=found[1], confidence=0.7,
+                    notes="Значение найдено в описании по допустимым значениям КТРУ",
+                ))
+    return _drop_covered(out, user_rows or set()), issues
+
+
+def _drop_covered(chars: list[ParsedCharacteristic], user_rows: set[str]) -> list[ParsedCharacteristic]:
+    ktru = [(norm(c.value), morph.words(c.name)) for c in chars if c.source == CharSource.KTRU and c.value]
+
+    def covered(c: ParsedCharacteristic) -> bool:
+        if c.source == CharSource.KTRU or not c.value or c.raw_name.lower() in user_rows:
+            return False
+        own = morph.words(c.name)
+        return any(norm(c.value) == value and all(any(morph.same_stem(a, b) for b in name) for a in own)
+                   for value, name in ktru)
+
+    return [c for c in chars if not covered(c)]
