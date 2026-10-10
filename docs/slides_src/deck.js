@@ -195,32 +195,31 @@ function sResults(p, n, t) {
   text(s, M.versionNote, [1.0, 1.9, 5.3, 0.36], { fontFace: FONT, fontSize: 11.5, bold: true, color: BLUE, align: 'center', valign: 'middle' });
   roundRect(s, [1.0, 2.5, 5.3, 4.1], GRAYBG, { adj: 0.07 });
   text(s, 'Основной набор · ' + M.main.cases + ' кейсов', [1.2, 2.62, 4.9, 0.25], { fontFace: FONT, fontSize: 11, bold: true, color: BLUE });
-  text(s, 'Отложенный набор · ' + M.heldOut.cases + ' новых, код не подстраивался', [1.2, 4.55, 4.9, 0.25], { fontFace: FONT, fontSize: 11, bold: true, color: BLUE });
-  [[M.main.top1Pct, 'код на 1-м месте · ' + M.main.top1], [M.main.top3Pct, 'код в топ-3 · ' + M.main.top3],
-   [M.heldOut.top1Pct, 'код на 1-м месте · ' + M.heldOut.top1], [M.heldOut.top3Pct, 'код в топ-3 · ' + M.heldOut.top3]].forEach(function (c, i) {
-    const x = 1.2 + (i % 2) * 2.5, y = 2.95 + Math.floor(i / 2) * 1.93;
-    roundRect(s, [x, y, 2.35, 1.45], WHITE, { adj: 0.1 });
-    headline(s, c[0], [x + 0.1, y + 0.18, 2.15, 0.6], { fontSize: 34, color: BRIGHT, align: 'center' });
-    body(s, c[1], [x + 0.1, y + 0.88, 2.15, 0.4], { fontSize: 12, align: 'center' });
+  text(s, 'Отложенный набор · ' + M.heldOut.cases + ' новых, код не подстраивался', [1.2, 4.3, 4.9, 0.25], { fontFace: FONT, fontSize: 11, bold: true, color: BLUE });
+  [[M.main.top1Pct, 'код 1-й', M.main.top1], [M.main.top3Pct, 'код в топ-3', M.main.top3], [M.main.statusPct, 'статус', M.main.status],
+   [M.heldOut.top1Pct, 'код 1-й', M.heldOut.top1], [M.heldOut.top3Pct, 'код в топ-3', M.heldOut.top3], [M.heldOutStatusPct, 'статус', M.heldOutStatus]].forEach(function (c, i) {
+    const x = 1.2 + (i % 3) * 1.65, y = 2.92 + Math.floor(i / 3) * 1.66;
+    roundRect(s, [x, y, 1.55, 1.25], WHITE, { adj: 0.1 });
+    headline(s, c[0], [x + 0.05, y + 0.13, 1.45, 0.45], { fontSize: 26, color: BRIGHT, align: 'center' });
+    body(s, c[1] + '\n' + c[2], [x + 0.05, y + 0.64, 1.45, 0.55], { fontSize: 11.5, align: 'center', lineSpacingMultiple: 1.05 });
   });
+  body(s, [{ text: 'Код первым по категориям:', options: { bold: true, color: INK, breakLine: true } }, { text: 'мебель ' + M.heldOutByDomain.furniture + ' · инструменты ' + M.heldOutByDomain.tools + ' · одежда ' + M.heldOutByDomain.clothing }], [1.2, 5.92, 4.9, 0.55], { fontSize: 11.5 });
   const hd = { bold: true, color: WHITE, fill: { color: BLUE } };
   const v = function (x) { return { text: x, options: { align: 'right', bold: true, color: BLUE } }; };
-  const d = M.heldOutByDomain;
+  const d = M.heldOutByDomain, ie = M.injectedErrors;
   const rows = [
     [{ text: 'Метрика', options: hd }, { text: 'Значение', options: Object.assign({ align: 'right' }, hd) }],
-    ['Статус верный (отложенный)', v(M.heldOutStatus + ' · ' + M.heldOutStatusPct)],
-    ['Мебель / инструменты / одежда', v(d.furniture + ' · ' + d.tools + ' · ' + d.clothing)],
-    ['Ложные тревоги на чистых', v(M.falseAlarms)],
-    ['Время ответа: медиана', v(M.latencyMedian)],
-    ['Время ответа: p95*', v(M.latencyP95)],
+    ['Внесённые ошибки пойманы**', v(ie.caught)],
+    ['Время ответа: медиана / p95*', v(M.latencyMedian + ' / ' + M.latencyP95)],
     ['Нагрузка: параллельных запросов', v(M.loadParallel + ' без ошибок')],
     ['Справочник КТРУ (весь архив)', v(M.ktruItems + ' позиция')],
     ['Автотесты pytest', v(M.autotests)],
     ['Чистая сборка индекса', v(M.indexBuild)]];
-  s.addTable(rows, { x: 6.75, y: 2.5, w: 5.75, colW: [3.3, 2.45], rowH: 0.33, fontFace: FONT, fontSize: 12, color: INK, border: { type: 'solid', pt: 0.75, color: 'D5DCE6' }, valign: 'middle', margin: 0.06 });
-  body(s, '* замер eval-скрипта qa/run_eval.py', [6.75, 5.88, 5.75, 0.25], { fontSize: 11, color: MUTED });
-  heading(s, 'Демо: мебель, одежда, инструменты', [6.75, 6.15, 5.75, 0.3], { fontSize: 13 });
-  body(s, 'Бейджи, правка в один клик, ' + M.funnelOutput + '.', [6.75, 6.45, 5.75, 0.3], { fontSize: 12 });
+  s.addTable(rows, { x: 6.75, y: 2.5, w: 5.75, colW: [3.25, 2.5], rowH: 0.33, fontFace: FONT, fontSize: 12, color: INK, border: { type: 'solid', pt: 0.75, color: 'D5DCE6' }, valign: 'middle', margin: 0.06 });
+  body(s, M.falseAlarmsSlide, [6.75, 4.85, 5.75, 0.3], { fontSize: 12, bold: true, color: INK });
+  body(s, '* замер eval-скрипта qa/run_eval.py\n** единицы ' + ie.units + ', числа ' + ie.unrealistic + ', несуществующие ' + ie.nonExistent + ', опечатки ' + ie.typos + '; ' + M.injectedCaveat,
+    [6.75, 5.3, 5.75, 0.55], { fontSize: 10.5, color: MUTED });
+  body(s, [{ text: 'Демо: ', options: { bold: true, color: INK } }, { text: 'мебель, одежда, инструменты; ' + M.funnelOutput + '.' }], [6.75, 6.0, 5.75, 0.55], { fontSize: 12 });
   return s;
 }
 
@@ -229,12 +228,11 @@ function sRoadmap(p, n, t) {
   chrome(s, n, t, { railR: false });
   headline(s, 'Ограничения и план развития', [1.3, 1.3, 4.2, 1.2]);
   bullets(s, ['Три домена: мебель, одежда, инструменты',
-    'Итог воронки — ' + M.funnelOutput.replace('на выходе ', '') + '; система говорит, что уточнить',
-    'Близкие наименования иногда путаются'], [5.75, 1.2, 6.6, 1.2], { fontSize: 13 });
-  roundRect(s, [5.75, 2.5, 6.6, 0.8], 'FFF4D6', { adj: 0.12 });
-  body(s, [{ text: 'Слабое место — внесённые ошибки: ', options: { bold: true, color: INK } },
-    { text: 'опечатки и отдельные нереалистичные числа пока ловятся не всегда.' }],
-    [5.95, 2.62, 6.25, 0.6], { fontSize: 12.5 });
+    'Итог воронки — ' + M.funnelOutput.replace('на выходе ', '') + '; система говорит, что уточнить'], [5.75, 1.3, 6.6, 1.0], { fontSize: 13 });
+  roundRect(s, [5.75, 2.5, 6.6, 0.85], 'FFF4D6', { adj: 0.12 });
+  body(s, [{ text: 'Слабое место: ', options: { bold: true, color: INK } },
+    { text: M.weakSpot }],
+    [5.95, 2.6, 6.25, 0.7], { fontSize: 12.5 });
   text(s, 'План', [1.3, 3.55, 1.2, 0.35], { fontFace: FONT, fontSize: 18, bold: true, color: INK });
   const step = 2.65, x0 = 1.3;
   const st = [['01', 'Несуществующие значения', 'Ловить значения, которых нет в справочнике', 2.45, 0, true],
