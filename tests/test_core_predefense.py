@@ -202,3 +202,44 @@ def test_zero_width_removed_spans_in_original(eng):
     sp = [c.span for c in r.characteristics if c.name == "Цвет" and c.span]
     if sp:
         assert "черный" in t[sp[0][0]:sp[0][1]].lower()
+
+
+@needs_db
+@pytest.mark.parametrize("text", ["Ноутбук 15,6 дюйма 16 ГБ", "Ноутбук Lenovo IdeaPad 15.6 дюйма 16 ГБ"])
+def test_complement_word_is_not_a_match(eng, text):
+    r = _an(eng, text)
+    assert r.best_ktru is None and r.out_of_scope is True
+    oos = [i for i in r.issues if i.type == "out_of_scope"]
+    assert len(oos) == 1 and oos[0].kind == "out_of_scope"
+
+
+def test_name_head():
+    from app.engine import _name_head, _name_overlap
+    assert _name_head("Сумка для ноутбука") == ["сумка"]
+    assert not _name_overlap("Ноутбук 15,6 дюйма", "Сумка для ноутбука")
+    assert _name_overlap("Сумка для ноутбука", "Сумка для ноутбука")
+
+
+@needs_db
+@pytest.mark.parametrize("text", ["Молоток отбойный электрический мощность 1510 Вт",
+                                  "Перфоратор сетевой мощность 800 Вт напряжение 220 В"])
+def test_power_tool_power_not_suspicious(eng, text):
+    r = _an(eng, text, "tools")
+    assert not any(c.suspicious for c in r.characteristics)
+    assert not any("не подходит к типу товара" in i.message for i in r.issues)
+
+
+@needs_db
+def test_no_ktru_characteristics_fill_null(eng):
+    e = next((x for x in eng.catalog.entries if not x.specs and x.domain), None)
+    if e is None:
+        pytest.skip("every KTRU position has characteristics")
+    r = _an(eng, e.name, e.domain)
+    if r.best_ktru is not None and not eng.catalog.by_code[r.best_ktru.code].specs:
+        assert r.fill is None and r.message == "У позиции КТРУ нет характеристик"
+
+
+@needs_db
+def test_fill_present_when_code_has_chars(eng):
+    r = _an(eng, "Стол письменный", "furniture")
+    assert r.fill is not None and r.message is None

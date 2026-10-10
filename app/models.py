@@ -181,8 +181,8 @@ class AnalyzeResponse(BaseModel):
     next_steps: list[str] = Field(default_factory=list)  # required steps only
     next_steps_detail: list[NextStep] = Field(default_factory=list)
     missing_characteristics: list[MissingCharacteristic] = Field(default_factory=list)  # required first
-    fill: FillCounter = Field(default_factory=FillCounter)
+    fill: FillCounter | None = None  # null when there is no code or the code has no KTRU characteristics
     question: Question | None = None
     out_of_scope: bool = False
-    message: str | None = None
+    message: str | None = None  # out_of_scope text, or «У позиции КТРУ нет характеристик»
     debug: dict[str, Any] = Field(default_factory=dict)
