@@ -1,39 +1,33 @@
 /* ============================================================================
- * Дизайн-токены «Портал поставщиков» (zakupki.mos.ru).
- * ИСТОЧНИК: макет Figma (G64ZNZOpvILbIPYx8XVbxO) недоступен без авторизации (HTTP 403),
- * zakupki.mos.ru 10.10.2026 не отвечал (timeout / 504) ни с одной из наших машин,
- * поэтому значения ниже — воспроизведение по публичному облику портала (тёмно-синяя
- * шапка, красный акцент Москвы, светло-серый фон, белые карточки с тонкой рамкой,
- * радиус 4 px, синие кнопки). Сверить пипеткой по макету и заменить здесь — всё
- * остальное в CSS ссылается только на эти переменные.
- * Шрифт: на портале фирменный гротеск; внешних CDN не используем — системные fallback.
+ * Дизайн-токены. ИСТОЧНИК: Figma UI-kit Портал поставщиков (свотчи доски
+ * G64ZNZOpvILbIPYx8XVbxO). Фон шапки #264B82 в макете не зафиксирован — взят основной синий.
+ * Шрифт Open Sans без CDN: локальный, если установлен, иначе системный fallback.
  * ========================================================================== */
 :root{
-  --pp-header-bg:#1f3a6b;      /* шапка портала, тёмно-синий */
-  --pp-header-text:#ffffff;
-  --pp-nav-bg:#ffffff;         /* полоса навигации под шапкой */
-  --pp-red:#da2128;            /* красный акцент (логотип Москвы, активная вкладка) */
-  --pp-primary:#2b6cd4;        /* кнопки/ссылки */
-  --pp-primary-hover:#1f57b0;
-  --pp-primary-light:#eaf1fc;
-  --pp-bg:#f2f4f7;             /* фон страницы */
-  --pp-surface:#ffffff;        /* карточки */
-  --pp-border:#dce1e8;
-  --pp-text:#1e2632;
-  --pp-muted:#7c8696;
-  --pp-muted-2:#a7afbb;        /* «серые» необязательные */
-  --pp-success:#1f8f4e; --pp-success-light:#e5f4ec;
-  --pp-warning:#c26a00; --pp-warning-light:#fff3e0;
-  --pp-danger:#d0342c;  --pp-danger-light:#fdecea;
-  --pp-violet:#6b46c1;  --pp-violet-light:#f0ebfb;
+  --pp-navy:#264B82;           /* шапка, вкладки, ссылки, вторичные кнопки, теги */
+  --pp-header-bg:var(--pp-navy); --pp-header-text:#FFFFFF;
+  --pp-nav-bg:#FFFFFF;
+  --pp-red:#DB2B21;            /* основная кнопка, акцент, ошибка */
+  --pp-primary:#DB2B21; --pp-primary-hover:#B8231B;
+  --pp-primary-light:#E7EEF7;  /* hover вторичной кнопки, фокус */
+  --pp-link:var(--pp-navy);
+  --pp-bg:#E7EEF7; --pp-surface:#FFFFFF; --pp-border:#D4DBE6;
+  --pp-text:#1A1A1A; --pp-muted:#8C8C8C;
+  --pp-grey:#7F8792; --pp-grey-light:#C9D1DF; --pp-muted-2:#7F8792;
+  --pp-sea:#167C85; --pp-sea-light:#48B8C2;
+  --pp-success:#0D9B68; --pp-success-light:#E2F4EE;
+  --pp-warning:#F67319; --pp-warning-light:#FEEEE3;
+  --pp-danger:#DB2B21;  --pp-danger-light:#FBE6E5;
+  --pp-violet:#F67319;  --pp-violet-light:#FEEEE3; /* бейдж «Новая» = оранжевый */
   --pp-radius:4px; --pp-radius-lg:8px; --pp-radius-pill:16px;
   --pp-space-1:4px; --pp-space-2:8px; --pp-space-3:12px; --pp-space-4:16px; --pp-space-5:24px;
-  --pp-shadow:0 1px 3px rgba(20,35,60,.08);
-  --pp-font:"PT Sans","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --pp-font-size:14px; --pp-h1:24px; --pp-h2:16px;
+  --pp-shadow:0 1px 3px rgba(38,75,130,.08);
+  --pp-font:"Open Sans","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --pp-font-size:14px;
+  --pp-h1:700 40px/52px var(--pp-font); --pp-h2:600 30px/40px var(--pp-font);
+  --pp-h3:700 24px/32px var(--pp-font); --pp-h4:700 20px/24px var(--pp-font);
   --pp-container:1280px;
-  /* совместимость со старыми именами */
-  --blue:var(--pp-header-bg);--accent:var(--pp-primary);--accent-l:var(--pp-primary-light);--bg:var(--pp-bg);--line:var(--pp-border);
+  --blue:var(--pp-navy);--accent:var(--pp-navy);--accent-l:var(--pp-primary-light);--bg:var(--pp-bg);--line:var(--pp-border);
   --text:var(--pp-text);--muted:var(--pp-muted);--green:var(--pp-success);--green-l:var(--pp-success-light);--orange:var(--pp-warning);
   --orange-l:var(--pp-warning-light);--red:var(--pp-danger);--red-l:var(--pp-danger-light);--violet:var(--pp-violet);--violet-l:var(--pp-violet-light)
 }
@@ -152,3 +146,33 @@ ul.next li.opt{color:var(--pp-muted-2)}
 .drop{display:block}
 .batch td.code{white-space:nowrap}
 .batch td:last-child{white-space:nowrap}
+
+/* ---- Figma UI-kit overrides ---- */
+a{color:var(--pp-link);text-decoration:underline}
+.page-title{font:var(--pp-h1)}
+h1{font:var(--pp-h4);margin:0 0 8px}h2{font:700 16px/24px var(--pp-font)}
+.btn{border-radius:var(--pp-radius)}
+.btn.primary{background:var(--pp-red);border-color:var(--pp-red);color:#fff}.btn.primary:hover{background:var(--pp-primary-hover)}
+.btn.ghost{background:#fff;border:1px solid var(--pp-navy);color:var(--pp-navy)}.btn.ghost:hover{background:#E7EEF7}
+.chip{color:var(--pp-navy)}.chip:hover{background:#E7EEF7;border-color:var(--pp-navy)}
+textarea:focus,select:focus,input:focus{border-color:var(--pp-navy);box-shadow:0 0 0 2px #E7EEF7}
+.chars tr.err input,.chars tr.err select,input.err{border-color:var(--pp-danger)}
+.chars tr.err .hint,.lbl.err{color:var(--pp-danger)}
+.nav .tab,.nav a{color:var(--pp-navy)}.nav .active{border-bottom-color:var(--pp-red)}
+.mark{background:var(--pp-red)}
+.code{color:var(--pp-navy)}
+.badge.ktru{background:var(--pp-navy);color:#fff}
+.badge.portal{background:var(--pp-sea);color:#fff}
+.badge.new{background:var(--pp-warning);color:#fff}
+.tag{background:var(--pp-navy);color:#fff;border-radius:var(--pp-radius);padding:2px 8px;font-size:12px}.tag.err{background:var(--pp-red)}
+.sbadge.good{background:var(--pp-success);color:#fff}.sbadge.mid{background:var(--pp-warning);color:#fff}.sbadge.bad{background:var(--pp-danger);color:#fff}
+.status.ok{background:var(--pp-success-light);color:var(--pp-success);border-color:var(--pp-success)}
+.status.need_more,.status.ambiguous,.status.not_found{background:var(--pp-warning-light);color:#B4500C;border-color:var(--pp-warning)}
+.status.error{background:var(--pp-danger-light);color:var(--pp-danger);border-color:var(--pp-danger)}
+.funnel .bar{background:var(--pp-navy)}.funnel .bar.last{background:var(--pp-success)}
+.fill .counter{color:var(--pp-navy)}
+.pbar > i{background:var(--pp-navy)}
+.corr .kind{background:var(--pp-navy);color:#fff}
+.corr .from{color:var(--pp-danger)}.corr .to{color:var(--pp-success)}
+.hl-preview mark.error{background:var(--pp-danger-light);color:var(--pp-danger);border-bottom-color:var(--pp-danger)}
+.hl-preview mark.warning{background:var(--pp-warning-light);color:#B4500C;border-bottom-color:var(--pp-warning)}
