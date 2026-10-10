@@ -7,7 +7,9 @@ from app.catalog import Catalog
 from app.config import CHAR_ALIASES
 from app.db import connect, db_ready
 from app.matcher import OK_MARGIN, candidates_view, narrow_ktru, _cand
-from app.models import AnalyzeRequest, AnalyzeResponse, Issue
+from app.models import AnalyzeRequest, AnalyzeResponse, CharSource, Issue, ParsedCharacteristic
+from app.units import canon_unit
+from app.validate import is_numeric_spec, numeric_view
 from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text, translit_if_latin
 from app.unify import unify_characteristics
 
@@ -37,6 +39,40 @@ class CatalogEngine:
             if c.name.strip():
                 merged.append(RawKV(name=c.name.strip(), value=(c.value or "").strip(), unit=c.unit or None))
         return merged, set(given)
+
+    def _next_steps(self, nr, chars, issues) -> list[str]:
+        """Unique hints; characteristic names exactly as in the table, never for filled ones."""
+        filled = {c.name for c in chars if c.value}
+        table = {c.name for c in chars}
+        out: list[str] = []
+        asked: set[str] = set()
+        for st in nr.next_steps:
+            if st.startswith("Уточните: "):
+                n = st.split(": ", 1)[1]
+                sp = self.catalog.find_spec(nr.best, n) if nr.best is not None else None
+                n = sp.name if sp is not None else n
+                if n in filled or n in asked:
+                    continue
+                if n not in table:
+                    if sp is None:
+                        continue
+                    lo, hi, nu = numeric_view(sp, None) if is_numeric_spec(sp) else (None, None, canon_unit(sp.unit) or sp.unit)
+                    chars.append(ParsedCharacteristic(
+                        name=sp.name, raw_name="", canonical_name=sp.name, value="",
+                        unit=nu, min=lo, max=hi, source=CharSource.KTRU, required=sp.required,
+                        allowed=sp.allowed_enums(), confidence=0.0,
+                        notes="Отличительная характеристика группы вариаций КТРУ",
+                    ))
+                    table.add(sp.name)
+                asked.add(n)
+                out.append(f"Укажите: {n}")
+            elif st not in out:
+                out.append(st)
+        for i in issues:
+            if i.type == "missing" and i.field and i.field not in filled and i.field not in asked:
+                asked.add(i.field)
+                out.append(f"Укажите: {i.field}")
+        return out
 
     def _canon_key(self, name: str, best) -> str:
         sp = self.catalog.find_spec(best, name) if best is not None else None
@@ -82,11 +118,9 @@ class CatalogEngine:
             ))
         chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text)
         issues.extend(char_issues)
-        next_steps = list(nr.next_steps)
+        next_steps = self._next_steps(nr, chars, issues)
         for i in issues:
-            if i.type == "missing" and i.field:
-                next_steps.append(f"Укажите: {i.field}")
-            elif i.severity == "error" and i.field:
+            if i.severity == "error" and i.field:
                 next_steps.append(f"Исправьте «{i.field}»" + (f": {i.suggestions[0]}" if i.suggestions else ""))
 
         # precedence: not_found > error > need_more > ambiguous > ok

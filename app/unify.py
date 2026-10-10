@@ -7,7 +7,7 @@ from app.catalog import Catalog, KtruEntry, norm
 from app.config import CHAR_ALIASES
 from app.models import CharSource, Issue, ParsedCharacteristic
 from app.parser import RawKV, canonicalize_name
-from app.units import canon_unit
+from app.units import canon_unit, dimension, expected_dimension, to_number
 from app.validate import check_value, is_numeric_spec, numeric_view, sanity_issues
 
 
@@ -98,6 +98,17 @@ def unify_characteristics(
         value = (item.value or "").strip()
         unit = canon_unit(item.unit) or item.unit
         spec = cat.find_spec(best, item.name) if best else None
+        if value and not unit and to_number(value) is not None and (
+                expected_dimension(spec.name if spec else item.name) == "length"
+                or (spec is not None and dimension(canon_unit(spec.unit)) == "length")):
+            num = to_number(value)
+            unit = "м" if (num < 10 and num != int(num)) else "мм"
+            item = RawKV(name=item.name, value=item.value, unit=unit)
+            issues.append(Issue.make(
+                "unit", field=spec.name if spec else item.name, value=value, expected=unit,
+                suggestions=[f"{value} {unit}"], severity="warning",
+                message=f"«{spec.name if spec else item.name}»: единица не указана — принято {value} {unit}",
+            ))
         pc = ParsedCharacteristic(
             name=item.name, raw_name=item.name, canonical_name=item.name,
             value=value, unit=unit, user_input=user_input,
@@ -183,4 +194,9 @@ def unify_characteristics(
                 suggestions=(sp.allowed_enums() or [])[:3],
                 message=f"Не заполнена обязательная характеристика КТРУ «{sp.name}»",
             ))
+    # a text-parsed portal row whose value already went into a KTRU characteristic is a duplicate
+    ktru_vals = {norm(c.value) for c in out if c.source == CharSource.KTRU and c.value}
+    keep_user = {u.lower() for u in (user_rows or set())}
+    out = [c for c in out if not (c.source != CharSource.KTRU and c.value and norm(c.value) in ktru_vals
+                                  and (c.raw_name or c.name).lower() not in keep_user)]
     return out, issues
