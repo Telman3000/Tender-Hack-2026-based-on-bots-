@@ -7,12 +7,85 @@ from app.catalog import Catalog
 from app.config import CHAR_ALIASES
 from app.db import connect, db_ready
 from app.matcher import OK_MARGIN, candidates_view, narrow_ktru, _cand
-from app.models import (AnalyzeRequest, AnalyzeResponse, CharSource, Completeness, Correction, Issue, NextStep,
-                        ParsedCharacteristic)
+from app.models import (AnalyzeRequest, AnalyzeResponse, CharSource, Completeness, Correction, FillCounter, Issue,
+                        MissingCharacteristic, NextStep, ParsedCharacteristic, Question)
 from app.units import canon_unit
 from app.validate import is_numeric_spec, numeric_view
-from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text, translit_if_latin
-from app.unify import unify_characteristics
+from app.catalog import norm
+from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text, strip_html, translit_if_latin
+from app.unify import order_characteristics, unify_characteristics
+
+SUPPORTED = {"furniture": "мебель", "clothing": "одежда", "tools": "инструменты"}
+OUT_OF_SCOPE_MSG = ("Не наша категория: товар не относится к поддерживаемым категориям "
+                    "(мебель, одежда, инструменты) или не распознан. Код КТРУ не подбирается.")
+
+
+_INVISIBLE = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad"))
+
+
+def _drop_invisible(text: str) -> tuple[str, list[int] | None]:
+    """Remove zero-width characters / soft hyphens; return cleaned text and cleaned->original index map."""
+    if not any(ord(ch) in _INVISIBLE for ch in text):
+        return text, None
+    out, back = [], []
+    for i, ch in enumerate(text):
+        if ord(ch) not in _INVISIBLE:
+            out.append(ch)
+            back.append(i)
+    back.append(len(text))
+    return "".join(out), back
+
+
+def _name_overlap(product: str, ktru_name: str) -> bool:
+    st = lambda s: {w[:4] for w in norm(s).split() if len(w) >= 3}  # noqa: E731
+    return bool(st(product) & st(ktru_name))
+
+
+def choose_question(group, filled_names: set[str]) -> Question | None:
+    """One question only when the choice cannot be made for the user.
+
+    Asked when the remaining codes have several different names, or when an unfilled required enum
+    characteristic splits them. The field that splits the group into the most distinct values wins.
+    """
+    entries = [e for _, e in group]
+    if len(entries) < 2:
+        return None
+    names = list(dict.fromkeys(e.name for e in entries))
+    filled = {n.lower() for n in filled_names}
+    best = None
+    keys = dict.fromkeys(k for e in entries for k, sp in e.specs.items() if sp.enums and k not in filled)
+    for k in keys:
+        per_code = [frozenset(norm(v) for v in e.specs[k].enums) if k in e.specs else frozenset() for e in entries]
+        distinct = len(set(per_code))
+        if distinct < 2:
+            continue
+        req = any(e.specs[k].required for e in entries if k in e.specs)
+        if len(names) < 2 and not req:
+            continue  # same name, optional field: not worth a question, the UI just highlights it
+        score = (distinct, req)
+        if best is None or score > best[0]:
+            best = (score, k)
+    if best is None:
+        if len(names) < 2:
+            return None
+        return Question(field="Наименование", reason="Подходят позиции КТРУ с разными наименованиями",
+                        options=names[:6], remaining_by_option={n: sum(e.name == n for e in entries) for n in names[:6]},
+                        candidates_now=len(entries))
+    k = best[1]
+    from collections import Counter
+    cnt: Counter = Counter()
+    label = {}
+    for e in entries:
+        sp = e.specs.get(k)
+        for v in dict.fromkeys(sp.enums if sp else []):
+            cnt[norm(v)] += 1
+            label.setdefault(norm(v), v)
+    opts = [label[v] for v, _ in cnt.most_common(6)]
+    name = next(e.specs[k].name for e in entries if k in e.specs)
+    reason = ("Подходят позиции КТРУ с разными наименованиями" if len(names) > 1
+              else f"Обязательная характеристика «{name}» различает {len(entries)} подходящих кодов")
+    return Question(field=name, reason=reason, options=opts,
+                    remaining_by_option={label[v]: c for v, c in cnt.most_common(6)}, candidates_now=len(entries))
 
 
 def _step_field(t: str) -> str | None:
@@ -141,7 +214,8 @@ class CatalogEngine:
                                    suggestions=["python -m scripts.build_index --materials <папка материалов>"])],
                 next_steps=["Собрать индекс из материалов хакатона"],
             )
-        text = translit_if_latin(req.text)
+        src, back = _drop_invisible(strip_html(req.text))  # spans are mapped back to req.text at the end
+        text = translit_if_latin(src)
         domain = detect_domain(text, req.domain_hint)
         product, raw = parse_free_text(text, domain)
         product = guess_product_name(text) or product
@@ -149,13 +223,16 @@ class CatalogEngine:
 
         filled = [r for r in raw if r.value]
         nr = narrow_ktru(self.catalog, product, filled, domain, domain_detected=domain is not None, text=text)
+        if domain is None and nr.best is not None and not _name_overlap(product, nr.best.name):
+            # no category recognised and the best name shares no word with the item: not our category
+            nr.best, nr.group, nr.shown, nr.next_steps, nr.issues = None, [], [], [], []
         if req.characteristics and nr.best is not None:
             raw = self._dedupe_by_canonical(raw, user_rows, nr.best)
             filled = [r for r in raw if r.value]
         issues = list(nr.issues)
-        if text != req.text:
+        if text != src:
             issues.append(Issue.make(
-                "typo", field="Наименование", value=req.text, expected=text, suggestions=[text],
+                "typo", field="Наименование", value=src, expected=text, suggestions=[text],
                 severity="warning",
                 message=f"Описание набрано латиницей — распознано как «{text}». Проверьте и введите кириллицей",
             ))
@@ -196,8 +273,29 @@ class CatalogEngine:
         req_fields = {c.name for c in chars if c.required}
         detail = [NextStep(text=t, field=f, required=(f is None or f in req_fields or t.startswith("Исправьте")))
                   for t in next_steps for f in [_step_field(t)]]
-        _add_spans(req.text, chars, issues, user_rows)
-        corrections = _corrections(req.text, text, issues, conv)
+        _add_spans(src, chars, issues, user_rows)
+        corrections = _corrections(src, text, issues, conv)
+        for obj in (*chars, *issues, *corrections):
+            if obj.span and back is not None:
+                obj.span = [back[obj.span[0]], back[max(obj.span[1] - 1, obj.span[0])] + 1]
+        chars = order_characteristics(chars)
+        out_of_scope = nr.best is None and domain is None and req.domain_hint is None
+        if out_of_scope:
+            issues.append(Issue.make("out_of_scope", OUT_OF_SCOPE_MSG, severity="warning",
+                                     suggestions=list(SUPPORTED.values())))
+        ktru_rows = [c for c in chars if c.source == CharSource.KTRU]
+        missing = [MissingCharacteristic(name=c.name, required=c.required, allowed=c.allowed, min=c.min,
+                                         max=c.max, unit=c.unit)
+                   for c in sorted((c for c in ktru_rows if not c.value), key=lambda c: not c.required)]
+        n_total = len(nr.best.specs) if nr.best is not None else 0
+        n_filled = sum(1 for c in ktru_rows if c.value)
+        rq = [c for c in ktru_rows if c.required]
+        fill = FillCounter(
+            filled=n_filled, total=max(n_total, len(ktru_rows)),
+            required_filled=sum(1 for c in rq if c.value), required_total=len(rq),
+            text=(f"Заполнено {n_filled} из {max(n_total, len(ktru_rows))} характеристик КТРУ "
+                  f"(обязательных {sum(1 for c in rq if c.value)} из {len(rq)})") if nr.best is not None else "")
+        question = choose_question(nr.group, {c.name for c in chars if c.value}) if nr.best is not None else None
         has_error = any(i.severity == "error" for i in issues)
         req_rows = [c for c in chars if c.required]
         opt_rows = [c for c in chars if not c.required]
@@ -222,5 +320,10 @@ class CatalogEngine:
             candidates=candidates_view(nr.shown[:5] if len(nr.group) > 1 else []),
             status=status,
             next_steps=[d.text for d in detail if d.required],
+            missing_characteristics=missing,
+            fill=fill,
+            question=question,
+            out_of_scope=out_of_scope,
+            message=OUT_OF_SCOPE_MSG if out_of_scope else None,
             debug={"raw_count": len(raw), "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1)},
         )

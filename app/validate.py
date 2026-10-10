@@ -9,6 +9,7 @@ from rapidfuzz import fuzz, process
 
 from app.catalog import CharSpec, norm
 from app.models import Issue
+from app.units import UNITS as _UNITS_KNOWN
 from app.units import canon_unit, convert, dimension, expected_dimension, fmt, guess_unit, to_number
 
 # common-sense upper bounds when KTRU gives no range: domain -> dim -> (unit, max, label)
@@ -256,6 +257,9 @@ def is_numeric_spec(spec: CharSpec) -> bool:
 def numeric_view(spec: CharSpec, domain: str | None) -> tuple[float | None, float | None, str | None]:
     """min/max/unit for a numeric KTRU characteristic: KTRU range, else common-sense limits."""
     unit = canon_unit(spec.unit) or spec.unit
+    if not unit:
+        m = re.search(r"\(([^()]+)\)\s*$", spec.name)  # «Максимальный крутящий момент (Нм)»
+        unit = canon_unit(m.group(1)) if m and canon_unit(m.group(1)) in _UNITS_KNOWN else None
     if not unit:
         low = spec.name.lower()
         dim = expected_dimension(spec.name)
