@@ -42,7 +42,8 @@ WORK_STEMS = ("рабоч", "спец", "уборщ", "производстве�
 QUALIFIER_STEMS = (
     "кож", "=мех", "=меха", "=мехом", "мехов", "детск", "женск", "мужск", "резин", "пластик", "пациент", "хирург", "операцион",
     "процедур", "изолир", "одноразов", "многоразов", "ученич", "лаборатор", "клавиш", "библиотеч",
-    "механическ",
+    "механическ", "одежд", "посуд", "хлеб", "игрушек", "реактив", "холодильн", "сушильн",
+    "приставн", "журнальн", "обеденн", "компьютерн", "раскройн", "туристическ", "президиум",
 )
 # head noun -> generic KTRU name used for that kind of goods
 HEAD_SYNONYMS = {
@@ -50,6 +51,8 @@ HEAD_SYNONYMS = {
     "сапог": "обувь специальная", "туфл": "обувь", "кроссовк": "обувь",
 }
 OK_MARGIN = 8.0
+MATERIAL_CONFLICTS = (("металл", "дерев"), ("дерев", "металл"), ("пластик", "металл"), ("пластик", "дерев"))
+PURPOSE_EXPANSIONS = {"документ": ("архивн", "картотечн", "документ"), "офисн": ("письменн",)}
 
 
 def canonical_label(cnt: Counter, raw_name: str) -> str:
@@ -220,6 +223,15 @@ def narrow_ktru(
         okp = cat.okpd_for(pool)
         s1 = s1 + np.where(np.char.startswith(okp, "14.12") | np.char.startswith(okp, "15.20.3"), 30.0,
                            np.where(np.char.startswith(okp, "14.14") | np.char.startswith(okp, "14.19"), -20.0, 0.0))
+    # contradicting materials: «металлический» query vs «деревянный» position
+    for a, b in MATERIAL_CONFLICTS:
+        if any(w.startswith(a) for w in qws):
+            s1 = s1 - 25.0 * cat.qualifier_mask(pool, b)
+    # purpose -> KTRU wording («для документов» -> «архивный», «картотечный»)
+    for stem, words in PURPOSE_EXPANSIONS.items():
+        if any(w.startswith(stem) for w in qws):
+            for wd in words:
+                s1 = s1 + 12.0 * cat.qualifier_mask(pool, wd)
     # qualifiers in the KTRU name not backed by the query
     pen = np.zeros(len(names))
     for st in QUALIFIER_STEMS:
