@@ -28,6 +28,7 @@ class NarrowResult:
     issues: list[Issue] = field(default_factory=list)
     next_steps: list[str] = field(default_factory=list)
     query: str = ""
+    shown: list = field(default_factory=list)
 
 
 def score_name(query: str, candidate: str) -> float:
@@ -225,11 +226,19 @@ def narrow_ktru(
         ranked = sorted(cnt, key=lambda n: (-(len(vals.get(n, ())) > 1), -cnt[n], n))
         for n in ranked[:3]:
             res.next_steps.append(f"Уточните: {n}")
+    # show distinct names first so the UI/top-3 covers alternative groups
+    seen_n: set[str] = set()
+    firsts, rest = [], []
+    for s_, e in group + [(s_, e) for s_, e, _ in cands[len(group):len(group) + 10]]:
+        (rest if e.name in seen_n else firsts).append((s_, e))
+        seen_n.add(e.name)
+    shown = (firsts[:3] + [x for x in group if x not in firsts[:3]])[:8]
+    res.shown = shown
     res.steps.append(NarrowingStep(
         step=step_no, label="Итог", stage="final" if len(distinct_names) == 1 else "ambiguous",
         remaining=len(group), removed=len(cands) - len(group),
         reason=final_note, removed_codes=[e.code for _, e, _ in cands[len(group):][:10]],
-        top=[_cand(e, s) for s, e in group[:8]], note=final_note,
+        top=[_cand(e, s) for s, e in shown], note=final_note,
     ))
     return res
 

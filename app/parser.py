@@ -23,7 +23,8 @@ _NUM_UNIT = re.compile(
     r"(?P<label>высота|ширина|глубина|длина|масса|вес|толщина|диаметр|мощность|"
     r"напряжение|объ[её]м|размер)\s+"
     r"(?P<value>\d+(?:[.,]\d+)?)\s*"
-    r"(?P<unit>мм|см|м|кг|г|гр|шт|мл|л|кВт|Вт|вт|В|А|%)?(?![а-яa-z])",
+    r"(?P<unit>миллиметр\w*|сантиметр\w*|метр\w*|килограмм\w*|грамм\w*|литр\w*|ватт\w*|вольт\w*|"
+    r"мм|см|м|кг|г|гр|шт|мл|л|кВт|Вт|вт|В|А|%)?(?![а-яa-z])",
     re.IGNORECASE,
 )
 
@@ -59,6 +60,40 @@ _HEAD_CUT = re.compile(
     rf"[|:;,(]|\b(?:{_CHAR_WORDS})\b|\b(?:из|для|с|со|на)\b\s+\S+\s*\d|\d",
     re.I,
 )
+
+
+_TR = [("shch", "щ"), ("sch", "щ"), ("yo", "ё"), ("zh", "ж"), ("kh", "х"), ("ts", "ц"), ("ch", "ч"),
+       ("sh", "ш"), ("yu", "ю"), ("ya", "я"), ("yj", "ый"), ("ij", "ий"), ("iy", "ий"), ("yy", "ый"),
+       ("a", "а"), ("b", "б"), ("v", "в"), ("g", "г"), ("d", "д"), ("e", "е"), ("z", "з"), ("i", "и"),
+       ("j", "й"), ("k", "к"), ("l", "л"), ("m", "м"), ("n", "н"), ("o", "о"), ("p", "п"), ("r", "р"),
+       ("s", "с"), ("t", "т"), ("u", "у"), ("f", "ф"), ("h", "х"), ("c", "ц"), ("y", "ы"), ("w", "в"), ("x", "кс")]
+_UNIT_LAT = {"mm": "мм", "cm": "см", "m": "м", "kg": "кг", "g": "г", "vt": "Вт", "w": "Вт", "v": "В", "l": "л"}
+
+
+def translit_if_latin(text: str) -> str:
+    """'Stol ofisnyj LDSP 1200x750 mm' -> 'стол офисный ЛДСП 1200x750 мм' (only for text without Cyrillic)."""
+    if re.search(r"[а-яё]", text, re.I) or not re.search(r"[a-z]{3,}", text, re.I):
+        return text
+    out = []
+    for w in re.split(r"(\s+)", text):
+        lw = w.lower()
+        if not lw.strip() or not re.fullmatch(r"[a-z]+", lw):
+            out.append(w if not re.fullmatch(r"\d+x\d+", lw) else lw)
+            continue
+        if lw in _UNIT_LAT:
+            out.append(_UNIT_LAT[lw])
+            continue
+        if w.isupper() and len(w) <= 5:  # abbreviations: LDSP -> ЛДСП
+            r = lw
+            for a, b in _TR:
+                r = r.replace(a, b)
+            out.append(r.upper())
+            continue
+        r = lw
+        for a, b in _TR:
+            r = r.replace(a, b)
+        out.append(r)
+    return "".join(out)
 
 
 def words(text: str) -> list[str]:

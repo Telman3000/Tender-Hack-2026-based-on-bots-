@@ -7,7 +7,7 @@ from app.catalog import Catalog
 from app.db import connect, db_ready
 from app.matcher import candidates_view, narrow_ktru, _cand
 from app.models import AnalyzeRequest, AnalyzeResponse, Issue
-from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text
+from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text, translit_if_latin
 from app.unify import unify_characteristics
 
 
@@ -47,10 +47,11 @@ class CatalogEngine:
                                    suggestions=["python -m scripts.build_index --materials <папка материалов>"])],
                 next_steps=["Собрать индекс из материалов хакатона"],
             )
-        product, raw = parse_free_text(req.text)
-        product = guess_product_name(req.text) or product
+        text = translit_if_latin(req.text)
+        product, raw = parse_free_text(text)
+        product = guess_product_name(text) or product
         raw, user_rows = self._merge(raw, req)
-        domain = detect_domain(req.text, req.domain_hint)
+        domain = detect_domain(text, req.domain_hint)
 
         filled = [r for r in raw if r.value]
         nr = narrow_ktru(self.catalog, product, filled, domain, domain_detected=domain is not None)
@@ -89,7 +90,7 @@ class CatalogEngine:
             issues=issues,
             narrowing=nr.steps,
             best_ktru=_cand(nr.best, nr.group[0][0] if nr.group else 0.0) if nr.best else None,
-            candidates=candidates_view(group),
+            candidates=candidates_view(nr.shown[:5] if len(nr.group) > 1 else []),
             status=status,
             next_steps=list(dict.fromkeys(next_steps))[:10],
             debug={"raw_count": len(raw), "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1)},
