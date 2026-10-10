@@ -15,6 +15,17 @@ def norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+_ENDINGS = sorted({"", "а", "я", "ы", "и", "у", "ю", "е", "о", "ь", "й", "ой", "ый", "ий", "ая", "яя", "ое", "ее",
+                   "ые", "ие", "ого", "его", "ому", "ему", "ых", "их", "ым", "им", "ыми", "ими", "ую", "юю",
+                   "ов", "ев", "ам", "ям", "ом", "ем", "ах", "ях", "ами", "ями", "ей", "ью", "ья", "ье"},
+                  key=len)
+
+
+def stems_of(w: str) -> set[str]:
+    """Possible stems of a word: strip one regular ending (stem keeps >= 3 letters)."""
+    return {w[: len(w) - len(e)] for e in _ENDINGS if w.endswith(e) and len(w) - len(e) >= 3}
+
+
 def tokens(s: str) -> frozenset[str]:
     return frozenset(t for t in norm(s).split() if len(t) > 2)
 
@@ -170,14 +181,51 @@ class Catalog:
         return hit
 
     def vocab(self, domain: str | None) -> set[str]:
+        """Trusted words: KTRU names, characteristic names and values; portal words seen >= 3 times."""
         cache = self.__dict__.setdefault("_vocab", {})
         if domain not in cache:
+            from collections import Counter
+
             v: set[str] = set()
             for i in self.pool(domain):
-                v.update(self.entries[i].name_norm.split())
-            for n in self.ste_names.get(domain, [])[:30000]:
-                v.update(n.split())
-            cache[domain] = {w for w in v if len(w) >= 3}
+                e = self.entries[i]
+                v.update(e.name_norm.split())
+                for sp in e.specs.values():
+                    v.update(norm(sp.name).split())
+                    for val in sp.enums[:50]:
+                        v.update(norm(val).split())
+            names = (self.ste_names.get(domain, []) if domain is not None
+                     else [n for lst in self.ste_names.values() for n in lst])
+            cnt = Counter(w for n in names[:60000] for w in n.split())
+            v.update(w for w, c in cnt.items() if c >= 3)
+            cache[domain] = {w for w in v if len(w) >= 3 and not any(ch.isdigit() for ch in w)}
+        return cache[domain]
+
+    def enum_values_by_name(self) -> dict[str, set[str]]:
+        """characteristic name (lower) -> every allowed value of it across active KTRU (normalised)."""
+        cache = self.__dict__.get("_enum_by_name")
+        if cache is None:
+            cache = {}
+            for e in self.entries:
+                for sp in e.specs.values():
+                    if sp.enums:
+                        cache.setdefault(sp.name.lower(), set()).update(norm(v) for v in sp.enums)
+            self.__dict__["_enum_by_name"] = cache
+        return cache
+
+    def any_words(self, domain: str | None) -> set[str]:
+        """Every word seen in KTRU or portal names (any frequency): such a word is never a typo."""
+        cache = self.__dict__.setdefault("_any_words", {})
+        if domain not in cache:
+            names = (self.ste_names.get(domain, []) if domain is not None
+                     else [n for lst in self.ste_names.values() for n in lst])
+            from collections import Counter
+
+            from app.config import COMMON_WORDS
+
+            cnt = Counter(w for n in names for w in n.split())
+            v = set(self.vocab(domain)) | {w for w, c in cnt.items() if c >= 2} | COMMON_WORDS
+            cache[domain] = v
         return cache[domain]
 
     def vocab_list(self, domain: str | None) -> list[str]:
@@ -209,16 +257,11 @@ class Catalog:
         return cache[key]
 
     def known_form(self, word: str, domain: str | None) -> bool:
-        """Word is an inflection of a vocabulary word (same stem, ending differs by <= 3 chars)."""
+        """Word is a vocabulary word or its inflection (same stem + a regular Russian ending)."""
         cache = self.__dict__.setdefault("_stems", {})
         if domain not in cache:
             st: set[str] = set()
             for w in self.vocab(domain):
-                if len(w) >= 5:
-                    st.add(w[: max(4, len(w) - 3)])
+                st.update(stems_of(w))
             cache[domain] = st
-        st = cache[domain]
-        for cut in range(max(4, len(word) - 3), len(word) + 1):
-            if word[:cut] in st:
-                return True
-        return False
+        return bool(stems_of(word) & cache[domain])

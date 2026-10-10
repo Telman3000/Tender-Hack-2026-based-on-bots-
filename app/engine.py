@@ -7,11 +7,54 @@ from app.catalog import Catalog
 from app.config import CHAR_ALIASES
 from app.db import connect, db_ready
 from app.matcher import OK_MARGIN, candidates_view, narrow_ktru, _cand
-from app.models import AnalyzeRequest, AnalyzeResponse, CharSource, Issue, ParsedCharacteristic
+from app.models import (AnalyzeRequest, AnalyzeResponse, CharSource, Completeness, Correction, Issue, NextStep,
+                        ParsedCharacteristic)
 from app.units import canon_unit
 from app.validate import is_numeric_spec, numeric_view
 from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text, translit_if_latin
 from app.unify import unify_characteristics
+
+
+def _step_field(t: str) -> str | None:
+    if t.startswith("Укажите: "):
+        return t.split(": ", 1)[1]
+    if t.startswith("Исправьте «"):
+        return t[len("Исправьте «"):].split("»", 1)[0]
+    return None
+
+
+def _find(text: str, frag: str | None) -> list[int] | None:
+    if not frag:
+        return None
+    i = text.lower().find(frag.lower())
+    return [i, i + len(frag)] if i >= 0 else None
+
+
+def _add_spans(text: str, chars, issues, user_rows: set[str]) -> None:
+    for c in chars:
+        if c.value and (c.raw_name or c.name).lower() not in user_rows:
+            c.span = _find(text, c.user_input) or _find(text, c.value)
+    for i in issues:
+        frag = (i.value or "").split(" ")[0] if i.type == "unit" else i.value
+        i.span = _find(text, frag)
+        if i.span is None and i.field:
+            i.span = _find(text, i.field)
+
+
+def _corrections(orig: str, text: str, issues, conv) -> list[Correction]:
+    out: list[Correction] = []
+    if text != orig:
+        out.append(Correction(field="Наименование", kind="translit", from_=orig, to=text, span=[0, len(orig)]))
+    for i in issues:
+        if i.type == "typo" and i.value and i.expected and i.value != orig:
+            kind = "typo" if i.field in ("Наименование", "Описание") else "autofix"
+            out.append(Correction(field=i.field, kind=kind, from_=i.value, to=i.expected, span=_find(orig, i.value)))
+        elif i.type == "unit" and i.severity == "warning" and i.value and i.suggestions:
+            out.append(Correction(field=i.field, kind="unit", from_=i.value, to=i.suggestions[0],
+                                  span=_find(orig, i.value)))
+    for kind, field, frm, to in conv:
+        out.append(Correction(field=field, kind=kind, from_=frm, to=to, span=_find(orig, frm)))
+    return out
 
 
 class CatalogEngine:
@@ -116,7 +159,9 @@ class CatalogEngine:
                 severity="warning",
                 message=f"Описание набрано латиницей — распознано как «{text}». Проверьте и введите кириллицей",
             ))
-        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text)
+        conv: list = []
+        alts = [e for _, e in (nr.shown or [])[:10]]
+        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text, conv, alts)
         issues.extend(char_issues)
         next_steps = self._next_steps(nr, chars, issues)
         for i in issues:
@@ -147,8 +192,26 @@ class CatalogEngine:
                 suggestions=["Формат: «Стол офисный ЛДСП высота 750 мм цвет серый»"],
             ))
 
+        next_steps = list(dict.fromkeys(next_steps))[:10]
+        req_fields = {c.name for c in chars if c.required}
+        detail = [NextStep(text=t, field=f, required=(f is None or f in req_fields or t.startswith("Исправьте")))
+                  for t in next_steps for f in [_step_field(t)]]
+        _add_spans(req.text, chars, issues, user_rows)
+        corrections = _corrections(req.text, text, issues, conv)
+        has_error = any(i.severity == "error" for i in issues)
+        req_rows = [c for c in chars if c.required]
+        opt_rows = [c for c in chars if not c.required]
+        names = {e.name for _, e in nr.group} if nr.group else ({nr.best.name} if nr.best else set())
         group = nr.group if len(nr.group) > 1 else []
         return AnalyzeResponse(
+            code_status="not_found" if nr.best is None else ("determined" if len(names) <= 1 else "ambiguous"),
+            card_status="invalid" if has_error else (
+                "incomplete" if (any(not c.value for c in req_rows) or not filled) else "complete"),
+            completeness=Completeness(
+                required_total=len(req_rows), required_filled=sum(1 for c in req_rows if c.value),
+                optional_total=len(opt_rows), optional_filled=sum(1 for c in opt_rows if c.value)),
+            corrections=corrections,
+            next_steps_detail=detail,
             input_text=req.text,
             detected_domain=domain,
             product_guess=nr.query or product,
@@ -158,6 +221,6 @@ class CatalogEngine:
             best_ktru=_cand(nr.best, nr.group[0][0] if nr.group else 0.0) if nr.best else None,
             candidates=candidates_view(nr.shown[:5] if len(nr.group) > 1 else []),
             status=status,
-            next_steps=list(dict.fromkeys(next_steps))[:10],
+            next_steps=[d.text for d in detail if d.required],
             debug={"raw_count": len(raw), "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1)},
         )

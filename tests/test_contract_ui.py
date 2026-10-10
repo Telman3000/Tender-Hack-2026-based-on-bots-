@@ -226,3 +226,124 @@ def test_next_steps_match_table(text):
         assert n in rows and not rows[n]
     assert not any(s.startswith("Уточните: ") for s in r.next_steps)
 
+
+@needs_db
+def test_code_and_card_status():
+    e = CatalogEngine()
+    r = e.analyze(AnalyzeRequest(text="Стол офисный ЛДСП"))
+    assert r.code_status == "determined" and r.card_status == "incomplete"
+    c = r.completeness
+    assert c.required_total == sum(1 for x in r.characteristics if x.required)
+    assert c.required_filled < c.required_total
+    assert r.next_steps and all(d.required for d in r.next_steps_detail if d.text in r.next_steps)
+    assert set(r.next_steps) == {d.text for d in r.next_steps_detail if d.required}
+    r = e.analyze(AnalyzeRequest(text="абвгд ёжзий"))
+    assert r.code_status == "not_found" and r.status == "not_found"
+    r = e.analyze(AnalyzeRequest(text="Ключ гаечный 170х190 мм длина 27 м"))
+    assert r.card_status == "invalid"
+
+
+@needs_db
+def test_spans_and_corrections():
+    text = "Ключ гаечный длина 27 см"
+    r = CatalogEngine().analyze(AnalyzeRequest(text=text))
+    rows = [c for c in r.characteristics if c.value and c.span]
+    assert rows and all(0 <= c.span[0] < c.span[1] <= len(text) for c in rows)
+    kinds = {(x.kind, x.from_, x.to) for x in r.corrections}
+    assert any(k == "unit" and "27" in f and "270" in t for k, f, t in kinds), kinds
+    for x in r.corrections:
+        if x.span:
+            assert text[x.span[0]:x.span[1]].lower() == x.from_.lower()
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Kurtka zimnyaya muzhskaya"))
+    assert any(x.kind == "translit" for x in r.corrections)
+
+
+def test_correction_serializes_from():
+    from app.models import Correction
+    d = Correction(kind="unit", from_="27 см", to="270 мм").model_dump(by_alias=True)
+    assert d["from"] == "27 см"
+
+
+def _issues(text):
+    return CatalogEngine().analyze(AnalyzeRequest(text=text))
+
+
+@needs_db
+@pytest.mark.parametrize("text,value", [
+    ("Стул офисный вид материала сиденья пластилин", "пластилин"),
+    ("Ключ гаечный тип исполнения квадратный блин", "квадратный блин"),
+    ("Молоток тип ювелирный", "ювелирный"),
+])
+def test_named_value_not_allowed_is_error(text, value):
+    r = _issues(text)
+    bad = [i for i in r.issues if i.type == "not_allowed"]
+    assert bad and bad[0].severity == "error" and 1 <= len(bad[0].suggestions) <= 3
+    assert any(c.value == value for c in r.characteristics)  # never dropped
+    assert r.card_status == "invalid"
+
+
+@needs_db
+@pytest.mark.parametrize("text,bad", [
+    ("Перчатки рабочие размер 25", True), ("Перчатки рабочие размер 9", False),
+    ("Стол письменный ширина 5 мм", True), ("Молоток масса 1 г", True),
+    ("Стол письменный ширина 1200 мм", False),
+])
+def test_size_and_lower_limits(text, bad):
+    r = _issues(text)
+    assert any(i.severity == "error" for i in r.issues) == bad, [i.message for i in r.issues]
+
+
+def test_size_range_table():
+    from app.validate import size_range
+    assert size_range("Перчатки трикотажные", "clothing")[:2] == (5, 13)
+    assert size_range("Сапоги резиновые", "clothing")[:2] == (15, 50)
+    assert size_range("Футболка мужская", "clothing")[:2] == (18, 80)
+
+
+@needs_db
+@pytest.mark.parametrize("text,frm,to", [
+    ("Молотак слесарный", "Молотак", "молоток"),
+    ("Перчаттки рабочие", "Перчаттки", "перчатки"),
+    ("Куртка утепленая мужская", "утепленая", "утепленная"),
+])
+def test_typo_corrections(text, frm, to):
+    r = _issues(text)
+    assert any(c.kind == "typo" and c.from_ == frm and c.to == to for c in r.corrections), r.corrections
+
+
+@needs_db
+@pytest.mark.parametrize("text", ["Стол офисный ЛДСП высота 750 мм", "Куртка зимняя мужская размер 50",
+                                  "Шуруповерт аккумуляторный 18 В"])
+def test_no_false_typos(text):
+    assert not any(i.type == "typo" for i in _issues(text).issues)
+
+
+@needs_db
+def test_error_fix_steps_are_required():
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Ключ гаечный 170х190 мм длина 27 м"))
+    assert any(i.severity == "error" for i in r.issues)
+    fixes = [d for d in r.next_steps_detail if d.text.startswith("Исправьте")]
+    assert fixes and all(d.required for d in fixes)
+    assert all(d.text in r.next_steps for d in fixes)
+
+
+def test_adjective_to_noun_value_match():
+    from types import SimpleNamespace
+    from app.unify import _match_enum
+    sp = SimpleNamespace(enums=["Алюминий", "Дерево", "Металл"])
+    assert _match_enum(sp, ["алюминиевый", "профиль"], "алюминиевый профиль") == "Алюминий"
+    assert _match_enum(sp, ["деревянный"], "деревянный") == "Дерево"
+    assert _match_enum(sp, ["пластилин"], "пластилин") is None
+
+
+def test_value_runs_until_next_name_or_separator():
+    from app.unify import _phrase_words
+    ws = _phrase_words("Вид защиты от воды и масел, цвет синий")
+    assert [w for w, sg in ws if sg == 0][-1] == "масел"
+
+
+@needs_db
+def test_common_words_are_not_typos():
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Стол письменный ЛДСП, срок поставки 10 дней"))
+    assert not any(i.type == "typo" and (i.value or "").lower() == "поставки" for i in r.issues)
+
