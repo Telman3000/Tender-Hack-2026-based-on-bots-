@@ -1,29 +1,39 @@
-# QA eval — origin/main 9475297 + feature/core 1b31f4e + feature/ui 4f7f36a (local merge 1f25573)
+# QA eval — origin/main 0978986 + feature/core d341012 (fast-forward)
 
-Run: 2026-10-10 11:09 MSK. Fresh clone, fresh venv (Python 3.11.9), `pip install -r requirements.txt` (29 s),
-index built exactly per README (`python -m scripts.build_index --materials <Kazan2026_unzipped>`, no flags): 71 s, 3391 KTRU positions
-(furniture 355, clothing 1522, tools 1514). pytest 29 passed. 45 cases, domain_hint on, two runs identical (deterministic).
+Run: 2026-10-10 12:16 MSK. Fresh clone, README Windows steps followed literally: venv + pip 41 s,
+`build_index` 117 s, 3391 KTRU positions (furniture 355, clothing 1522, tools 1514), 72 753 allowed-value rows, catalog.db 120 MB.
+pytest 35 passed. 45 cases, domain_hint on, two runs per variant identical (deterministic).
 
-Status scoring: clean+ok counts only with correct top-1; clean+ambiguous/need_more only if expected group in top-3;
+Status scoring: clean+ok only with correct top-1; clean+ambiguous/need_more only if expected group in top-3;
 incomplete: need_more|ambiguous; error: anything except ok.
 
+## Before GT change (cases.csv as of 0139aa0)
 | slice | n | top-1 | top-3 | group | status | false-confident (err) | ok-but-wrong-code | p50 ms | p95 ms | max ms |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ALL | 45 | 96% | 100% | 100% | 98% | 0% | 0% | 48 | 99 | 110 |
-| category=clothing | 15 | 93% | 100% | 100% | 100% | 0% | 0% | 58 | 99 | 110 |
-| category=furniture | 15 | 93% | 100% | 100% | 93% | 0% | 0% | 42 | 54 | 59 |
-| category=tools | 15 | 100% | 100% | 100% | 100% | 0% | 0% | 48 | 66 | 100 |
-| type=clean | 15 | 100% | 100% | 100% | 93% | - | 0% | 59 | 100 | 110 |
-| type=error | 15 | 93% | 100% | 100% | 100% | 0% | 0% | 56 | 66 | 67 |
-| type=incomplete | 15 | 93% | 100% | 100% | 100% | - | 0% | 42 | 54 | 56 |
+| ALL | 45 | 98% | 100% | 100% | 98% | 0% | 0% | 55 | 155 | 219 |
+| category=clothing | 15 | 93% | 100% | 100% | 100% | 0% | 0% | 57 | 94 | 126 |
+| category=furniture | 15 | 100% | 100% | 100% | 93% | 0% | 0% | 38 | 56 | 57 |
+| category=tools | 15 | 100% | 100% | 100% | 100% | 0% | 0% | 58 | 179 | 219 |
+| type=clean | 15 | 100% | 100% | 100% | 93% | - | 0% | 57 | 115 | 126 |
+| type=error | 15 | 100% | 100% | 100% | 100% | 0% | 0% | 58 | 179 | 219 |
+| type=incomplete | 15 | 93% | 100% | 100% | 100% | - | 0% | 41 | 55 | 55 |
 
-Previous: feature/core 08c5d17 — top-1 93%, top-3 100%, status 89%, p50 57 ms (same cases.csv).
+## After GT change
+| slice | n | top-1 | top-3 | group | status | false-confident (err) | ok-but-wrong-code | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ALL | 45 | 98% | 100% | 100% | 100% | 0% | 0% | 51 | 116 | 203 |
+| category=clothing | 15 | 93% | 100% | 100% | 100% | 0% | 0% | 57 | 94 | 125 |
+| category=furniture | 15 | 100% | 100% | 100% | 100% | 0% | 0% | 38 | 56 | 57 |
+| category=tools | 15 | 100% | 100% | 100% | 100% | 0% | 0% | 51 | 116 | 203 |
+| type=clean | 15 | 100% | 100% | 100% | 100% | - | 0% | 57 | 112 | 125 |
+| type=error | 15 | 100% | 100% | 100% | 100% | 0% | 0% | 55 | 116 | 203 |
+| type=incomplete | 15 | 93% | 100% | 100% | 100% | - | 0% | 41 | 52 | 59 |
 
-UI acceptance (qa/ui_accept.py): edit 750->900 syncs table/request/response/text; reset restores table, text and result to 750;
-not_found shown as «Товар не распознан»; no JS console errors; favicon served as /static/favicon.svg (bare /favicon.ico still 404, not requested by the page).
+GT change (verified against ACTIVE KTRU XML): FU18 — need_more also allowed. Top code 31.01.11.122-00000001
+«Шкаф архивный металлический» is ACTIVE and requires «Тип дверей шкафа», which is absent from the query.
+Office desk cases (FU16/FU26/FU28/FU30) now return 31.01.10.000-00000004 «Стол письменный» (ACTIVE); expected group 31.01 unchanged.
 
-## Failures (top-3 miss or wrong status)
+Remaining top-1 miss: CL08 «Халат размер 48» (incomplete) -> 14.14.10.000 «Халат» (household), 14.12.30.130 is 2nd.
 
-| id | type | query | expected | got top3 | status | domain |
-|---|---|---|---|---|---|---|
-| FU18 | clean | Шкаф металлический для документов сварной высота 660 мм ширина 420 мм глубина 350 мм масса 19 кг 2 полки | 31.01 / ok|ambiguous | 31.01.11.121-00000003 31.01.11.121-00000005 31.01.11.122-00000001 | need_more | furniture |
+UI: smoke (10 API cases, no 500s, no JS errors), ui_accept (edit sync, reset to 750, «Товар не распознан») and the no-reload demo
+sequence FU19 -> TO37 -> TO42 all pass.
