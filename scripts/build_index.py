@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import re
@@ -23,8 +24,28 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.config import DOMAIN_KEYWORDS, OKPD2_PREFIXES  # noqa: E402
-from app.db import connect, ensure_processed_dir, init_schema, set_meta  # noqa: E402
-from app.config import DB_PATH  # noqa: E402
+from app.db import connect, ensure_processed_dir, init_schema, is_not_actual_name, set_meta  # noqa: E402
+from app.config import DB_PATH, IMPORTER_VERSION, PROCESSED_DIR  # noqa: E402
+
+
+def file_sha256(path: Path, chunk: int = 1 << 20) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            b = f.read(chunk)
+            if not b:
+                break
+            h.update(b)
+    return h.hexdigest()
+
+
+def manifest_entry(path: Path, label: str) -> dict:
+    return {
+        "path": str(path),
+        "size": path.stat().st_size if path.exists() else 0,
+        "sha256": file_sha256(path) if path.is_file() else "",
+        "label": label,  # actual | not-actual | portal | other
+    }
 
 
 NS = {
@@ -375,23 +396,30 @@ def parse_ktru_xml_bytes(data: bytes, conn, max_insert: int | None = None) -> in
     return inserted
 
 
-def ingest_ktru(conn, outer_zip: Path, max_files: int = 40) -> int:
+def ingest_ktru(conn, outer_zip: Path, max_files: int = 40, quarantine: list | None = None) -> int:
     print(f"[ktru] outer zip: {outer_zip} ({outer_zip.stat().st_size // 1_000_000} MB)")
     total = 0
+    quarantine = quarantine if quarantine is not None else []
     with zipfile.ZipFile(outer_zip) as z:
         inners = [n for n in z.namelist() if n.endswith(".zip")]
-        # Prefer files that contain actual XML — probe by name order (first ~82 often actual)
         processed = 0
         for inner_name in inners:
             if processed >= max_files:
                 break
+            if is_not_actual_name(inner_name):
+                quarantine.append({"path": inner_name, "reason": "all_not-actual filename"})
+                continue
             raw = z.read(inner_name)
             with zipfile.ZipFile(io.BytesIO(raw)) as z2:
                 xmls = z2.namelist()
+                skipped_na = [x for x in xmls if is_not_actual_name(x)]
+                for x in skipped_na:
+                    quarantine.append({"path": f"{inner_name}/{x}", "reason": "all_not-actual filename"})
                 actuals = [
                     x
                     for x in xmls
-                    if "all_actual" in x.lower() or "all-actual" in x.lower()
+                    if ("all_actual" in x.lower() or "all-actual" in x.lower())
+                    and not is_not_actual_name(x)
                 ]
                 if not actuals:
                     continue
@@ -460,6 +488,81 @@ def seed_ktru_from_portal_if_empty(conn) -> int:
     return n
 
 
+def write_manifest_and_profile(
+    conn,
+    db_path: Path,
+    materials: Path,
+    excel: dict[str, Path],
+    outer: Path | None,
+    quarantine: list,
+) -> str:
+    """Write manifest.json + data_profile.json; return snapshot_id."""
+    ensure_processed_dir()
+    entries: list[dict] = []
+    if outer and outer.is_file():
+        entries.append(manifest_entry(outer, "actual"))
+    for _dom, path in excel.items():
+        entries.append(manifest_entry(path, "portal"))
+    # record skipped not-actual paths (no sha of nested zip members)
+    for q in quarantine:
+        entries.append({
+            "path": q.get("path", ""),
+            "size": 0,
+            "sha256": "",
+            "label": "not-actual",
+        })
+
+    manifest = {
+        "importer_version": IMPORTER_VERSION,
+        "materials_root": str(materials),
+        "db": str(db_path),
+        "files": entries,
+    }
+    man_path = PROCESSED_DIR / "manifest.json"
+    man_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # profile
+    by_domain = {
+        d: conn.execute("SELECT COUNT(*) c FROM ktru WHERE domain=?", (d,)).fetchone()["c"]
+        for d in ("furniture", "clothing", "tools")
+    }
+    char_rows = conn.execute("SELECT COUNT(*) c FROM ktru_char_values").fetchone()["c"]
+    no_unit = conn.execute(
+        "SELECT COUNT(*) c FROM ktru_char_values WHERE unit IS NULL OR TRIM(unit)=''"
+    ).fetchone()["c"]
+    share_no_unit = round(no_unit / char_rows, 4) if char_rows else 0.0
+    profile = {
+        "importer_version": IMPORTER_VERSION,
+        "ktru_by_domain": by_domain,
+        "ktru_total": sum(by_domain.values()),
+        "ktru_char_values": char_rows,
+        "share_without_unit": share_no_unit,
+        "quarantine_rows": len(quarantine),
+        "portal_ste": conn.execute("SELECT COUNT(*) c FROM portal_ste").fetchone()["c"],
+        "portal_chars": conn.execute("SELECT COUNT(*) c FROM portal_chars").fetchone()["c"],
+    }
+    (PROCESSED_DIR / "data_profile.json").write_text(
+        json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    # snapshot_id = SHA-256(importer_version + sorted input digests)
+    h = hashlib.sha256()
+    h.update(IMPORTER_VERSION.encode("utf-8"))
+    for e in sorted(entries, key=lambda x: x["path"]):
+        if e.get("label") == "not-actual":
+            continue
+        h.update(e["path"].encode("utf-8", errors="replace"))
+        h.update(e.get("sha256", "").encode("ascii"))
+        h.update(str(e.get("size", 0)).encode("ascii"))
+    if db_path.exists():
+        h.update(str(db_path.stat().st_size).encode("ascii"))
+    snapshot_id = h.hexdigest()[:32]
+    set_meta(conn, "snapshot_id", snapshot_id)
+    set_meta(conn, "importer_version", IMPORTER_VERSION)
+    set_meta(conn, "data_profile", profile)
+    return snapshot_id
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--materials", default=str(ROOT / "_materials"))
@@ -485,11 +588,15 @@ def main() -> None:
     for domain, path in excel.items():
         ingest_portal_excel(conn, domain, path, ste_limit=args.ste_limit)
 
+    quarantine: list = []
+    outer = None
     ktru_n = 0
     if not args.skip_ktru:
         outer = find_ktru_outer_zip(materials)
         if outer:
-            ktru_n = ingest_ktru(conn, outer, max_files=args.ktru_files or 10**9)
+            ktru_n = ingest_ktru(
+                conn, outer, max_files=args.ktru_files or 10**9, quarantine=quarantine
+            )
         else:
             print("WARNING: KTRU zip not found")
     seed_ktru_from_portal_if_empty(conn)
@@ -504,9 +611,14 @@ def main() -> None:
         },
     }
     set_meta(conn, "stats", stats)
+    snapshot_id = write_manifest_and_profile(conn, db_path, materials, excel, outer, quarantine)
+    set_meta(conn, "stats", {**stats, "snapshot_id": snapshot_id})
     conn.close()
     print("DONE", json.dumps(stats, ensure_ascii=False, indent=2))
+    print("snapshot_id:", snapshot_id)
     print("DB:", db_path)
+    print("manifest:", PROCESSED_DIR / "manifest.json")
+    print("profile:", PROCESSED_DIR / "data_profile.json")
 
 
 if __name__ == "__main__":

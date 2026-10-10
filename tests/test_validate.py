@@ -1,7 +1,9 @@
+from decimal import Decimal
+
 from app.catalog import CharSpec
 from app.parser import detect_domain, guess_product_name, parse_free_text
 from app.units import canon_unit, convert, guess_unit
-from app.validate import check_value, sanity_issues
+from app.validate import _in_range, check_value, sanity_issues
 
 
 def test_units():
@@ -16,12 +18,31 @@ def test_range_ok_with_conversion():
     sp = CharSpec(name="Высота", ranges=[(700, 800, "greaterOrEqual", "lessOrEqual")], unit="Миллиметр")
     r = check_value(sp, "75", "см")
     assert r.ok and r.value == "750" and r.unit == "мм"
+    assert r.raw_value == "75"
+
+
+def test_ge_boundary_not_equality():
+    """«не менее 60» — оператор ge (Decimal), граница 60 проходит, 59 нет."""
+    sp = CharSpec(name="Длина", ranges=[(60, None, "greaterOrEqual", None)], unit="Миллиметр")
+    assert check_value(sp, "60", "мм").ok
+    assert not check_value(sp, "59", "мм").ok
+    assert _in_range(Decimal("60"), 60, None, "greaterOrEqual", None)
+    assert not _in_range(Decimal("60"), 60, None, "greaterThan", None)
 
 
 def test_out_of_range():
     sp = CharSpec(name="Высота", ranges=[(700, 800, None, None)], unit="Миллиметр")
     r = check_value(sp, "1100", "мм")
     assert not r.ok and r.issue.type == "out_of_range" and r.issue.severity == "error"
+
+
+def test_not_actual_filename_skipped():
+    from app.db import is_not_actual_name
+
+    assert is_not_actual_name("nsiKTRUNew_all_not-actual_20261003.xml")
+    assert is_not_actual_name("path/all-not-actual_001.xml")
+    assert not is_not_actual_name("nsiKTRUNew_all_actual_20261003020003_001.xml")
+    assert not is_not_actual_name("all_actual_part.zip")
 
 
 def test_wrong_unit_dimension():

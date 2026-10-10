@@ -103,15 +103,26 @@ def unify_characteristics(
                 or (spec is not None and dimension(canon_unit(spec.unit)) == "length")):
             num = to_number(value)
             unit = "м" if (num < 10 and num != int(num)) else "мм"
-            item = RawKV(name=item.name, value=item.value, unit=unit)
+            item = RawKV(
+                name=item.name, value=item.value, unit=unit,
+                start=getattr(item, "start", -1), end=getattr(item, "end", -1),
+                polarity=getattr(item, "polarity", "positive"),
+            )
             issues.append(Issue.make(
                 "unit", field=spec.name if spec else item.name, value=value, expected=unit,
                 suggestions=[f"{value} {unit}"], severity="warning",
                 message=f"«{spec.name if spec else item.name}»: единица не указана — принято {value} {unit}",
             ))
+        pol = getattr(item, "polarity", "positive") or "positive"
+        # polarity=negative + «нет» stays «нет» (never rewritten to «да»)
+        span = None
+        if getattr(item, "start", -1) >= 0 and getattr(item, "end", -1) > item.start:
+            span = [item.start, item.end]
         pc = ParsedCharacteristic(
             name=item.name, raw_name=item.name, canonical_name=item.name,
             value=value, unit=unit, user_input=user_input,
+            polarity="negative" if pol == "negative" else "positive",
+            span=span,
         )
         if spec is not None:
             pc.name = pc.canonical_name = spec.name

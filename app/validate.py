@@ -1,6 +1,8 @@
 """Value validation against KTRU: allowed lists, numeric ranges, units (OKEI)."""
 from __future__ import annotations
 
+import re
+from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 
 from rapidfuzz import fuzz, process
@@ -9,47 +11,92 @@ from app.catalog import CharSpec, norm
 from app.models import Issue
 from app.units import canon_unit, convert, dimension, expected_dimension, fmt, guess_unit, to_number
 
+
+def _dec(x: float | int | str | Decimal | None) -> Decimal | None:
+    if x is None:
+        return None
+    try:
+        return x if isinstance(x, Decimal) else Decimal(str(x))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _op_lower(op: str | None) -> str:
+    return (op or "").lower()
+
 # common-sense upper bounds when KTRU gives no range: domain -> dim -> (unit, max, label)
+# domain -> dimension -> (unit, max, what[, min]); min applies to main dimensions only
 _LIMITS = {
-    "furniture": {"length": ("м", 5, "мебели"), "mass": ("кг", 500, "мебели")},
-    "tools": {"length": ("м", 3, "ручного инструмента"), "mass": ("кг", 100, "инструмента"),
-              "voltage": ("В", 1000, "инструмента"), "power": ("Вт", 10000, "инструмента")},
-    "clothing": {"length": ("м", 3, "одежды"), "mass": ("кг", 20, "одежды")},
+    "furniture": {"length": ("м", 5, "мебели", 0.1), "mass": ("кг", 500, "мебели", 0.1)},
+    "tools": {"length": ("м", 3, "ручного инструмента", 0.01), "mass": ("кг", 100, "инструмента", 0.005),
+              "voltage": ("В", 1000, "инструмента", 1), "power": ("Вт", 10000, "инструмента", 1)},
+    "clothing": {"length": ("м", 3, "одежды"), "mass": ("кг", 20, "одежды", 0.005)},
 }
+_MAIN_DIMS = {"высота", "ширина", "глубина", "длина", "габаритная высота", "габаритная ширина",
+              "габаритная глубина", "габаритная длина"}
+# item type (word stems in the description) -> typical size range; first match wins
+_SIZE_RANGES = (
+    (("перчат", "рукавиц", "краг"), 5, 13, "размера перчаток"),
+    (("шапк", "кепк", "берет", "бейсболк", "панам", "каск", "шлем", "головн"), 46, 66, "размера головного убора"),
+    (("обув", "ботин", "сапог", "туфл", "кроссов", "кед", "тапоч", "сандал", "галош"), 15, 50, "размера обуви"),
+)
+
+
+def size_range(text: str, domain: str | None) -> tuple[float, float, str] | None:
+    words = re.findall(r"[а-яё]+", (text or "").lower())
+    for stems, lo, hi, what in _SIZE_RANGES:
+        if any(w.startswith(st) for w in words for st in stems):
+            return lo, hi, what
+    if domain == "clothing":
+        return 18, 80, "российского размера одежды"
+    return None
+
+
 _DIM_HINT = {"length": ["мм", "см"], "mass": ["кг", "г"], "volume": ["л", "мл"], "power": ["Вт"]}
 
 
 @dataclass
 class CheckResult:
     ok: bool
-    value: str
+    value: str  # normalized for display (unit conversion); not a range midpoint
     unit: str | None
     issue: Issue | None = None
     converted: bool = False
+    raw_value: str | None = None  # исходная строка пользователя, без подмены серединой интервала
 
 
-def _in_range(x: float, lo, hi, lo_op, hi_op) -> bool:
-    eps = 1e-9
-    if lo is not None:
-        if lo_op and lo_op.lower().startswith("greater") and "equal" not in lo_op.lower():
-            if not x > lo + eps:
+def _in_range(x: float | Decimal, lo, hi, lo_op, hi_op) -> bool:
+    """Compare with Decimal; min_op/max_op from ktru_char_values stay as operators (ge ≠ equality)."""
+    xd = _dec(x)
+    if xd is None:
+        return False
+    lo_d, hi_d = _dec(lo), _dec(hi)
+    lo_l, hi_l = _op_lower(lo_op), _op_lower(hi_op)
+    if lo_d is not None:
+        # greaterThan (strict) vs greaterOrEqual / empty (ge)
+        if lo_l.startswith("greater") and "equal" not in lo_l:
+            if not xd > lo_d:
                 return False
-        elif x < lo - eps:
-            return False
-    if hi is not None:
-        if hi_op and hi_op.lower().startswith("less") and "equal" not in hi_op.lower():
-            if not x < hi - eps:
+        else:
+            # greaterOrEqual / ge / default: boundary «не менее 60» stays inclusive
+            if not xd >= lo_d:
                 return False
-        elif x > hi + eps:
-            return False
+    if hi_d is not None:
+        if hi_l.startswith("less") and "equal" not in hi_l:
+            if not xd < hi_d:
+                return False
+        else:
+            if not xd <= hi_d:
+                return False
     return True
 
 
 def _range_text(spec: CharSpec) -> str:
     parts = []
     for lo, hi, lo_op, hi_op in spec.ranges[:3]:
-        a = ("> " if lo_op and "equal" not in lo_op.lower() else "≥ ") + fmt(lo) if lo is not None else ""
-        b = ("< " if hi_op and "equal" not in hi_op.lower() else "≤ ") + fmt(hi) if hi is not None else ""
+        lo_l, hi_l = _op_lower(lo_op), _op_lower(hi_op)
+        a = ("> " if lo_l.startswith("greater") and "equal" not in lo_l else "≥ ") + fmt(lo) if lo is not None else ""
+        b = ("< " if hi_l.startswith("less") and "equal" not in hi_l else "≤ ") + fmt(hi) if hi is not None else ""
         parts.append(" и ".join(p for p in (a, b) if p))
     if spec.numbers:
         parts.append(", ".join(fmt(n) for n in sorted(set(spec.numbers))[:8]))
@@ -102,13 +149,17 @@ def check_value(
             if conv is not None:
                 converted = u != target
                 x = conv
-        ok = any(_in_range(x, *r) for r in spec.ranges) or any(abs(x - n) < 1e-6 for n in spec.numbers)
-        out_val, out_unit = (fmt(x), target) if target else (value, u)
+        xd = _dec(x) or Decimal(0)
+        ok = any(_in_range(xd, *r) for r in spec.ranges) or any(
+            abs(xd - (_dec(n) or Decimal(0))) < Decimal("1e-9") for n in spec.numbers
+        )
+        # Converted number for display; never replace a KTRU interval with its midpoint
+        out_val, out_unit = (fmt(float(xd)), target) if target else (value, u)
         if not ok:
             sugg = []
             if spec.numbers:
                 sugg = [fmt(n) + (f" {target}" if target else "")
-                        for n in sorted(set(spec.numbers), key=lambda n: abs(n - x))[:3]]
+                        for n in sorted(set(spec.numbers), key=lambda n: abs(n - float(xd)))[:3]]
             return CheckResult(
                 False, out_val, out_unit,
                 Issue.make(
@@ -117,22 +168,23 @@ def check_value(
                     suggestions=sugg,
                     message=(
                         f"«{field}» = {value} {u or ''}".rstrip()
-                        + (f" (= {fmt(x)} {target})" if converted else "")
+                        + (f" (= {fmt(float(xd))} {target})" if converted else "")
                         + f" вне допустимых значений КТРУ: {_range_text(spec)}"
                     ),
                     severity="error",
                 ) if emit else None,
                 converted,
+                raw_value=value,
             )
         issue = None
-        if guessed and emit:
+        if guessed and emit and u:
             issue = Issue.make(
                 "unit", field=field, value=value, expected=target,
                 message=f"«{field}»: единица не указана — принято {value} {u}"
-                + (f" = {fmt(x)} {target}" if converted else ""),
+                + (f" = {fmt(float(xd))} {target}" if converted else ""),
                 suggestions=[f"{value} {u}"], severity="warning",
             )
-        return CheckResult(True, out_val, out_unit, issue, converted)
+        return CheckResult(True, out_val, out_unit, issue, converted, raw_value=value)
 
     if spec.enums:
         nv = norm(value)
@@ -163,7 +215,7 @@ def check_value(
     return CheckResult(True, value, unit)
 
 
-def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -> list[Issue]:
+def sanity_issues(name: str, value: str, unit: str | None, domain: str | None, text: str = "") -> list[Issue]:
     """Common-sense checks when KTRU has no constraint (furniture/tool sizes)."""
     out: list[Issue] = []
     num = to_number(value)
@@ -185,18 +237,32 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -
     if num <= 0 and any(k in low for k in ("высот", "ширин", "глубин", "длин", "масс", "вес", "мощност")):
         out.append(Issue.make("mismatch", field=name, value=value, expected="> 0",
                               message=f"«{name}» должно быть положительным", severity="error"))
-    if domain == "clothing" and not u:
-        for stem, lo, hi, what in (("размер", 18, 80, "российского размера одежды"), ("рост", 50, 220, "роста, см")):
-            if low.startswith(stem) and not lo <= num <= hi:
+    if not u and low.startswith("размер"):
+        rng = size_range(text, domain)
+        if rng:
+            lo, hi, what = rng
+            nums = [to_number(x) for x in re.split(r"[-–/]", value)]
+            if any(n is not None and not lo <= n <= hi for n in nums):
                 out.append(Issue.make(
                     "mismatch", field=name, value=value, expected=f"{lo}–{hi}",
                     message=f"«{name}» = {value} вне типичного диапазона {what} ({lo}–{hi})",
                     severity="error"))
+    if domain == "clothing" and not u and low.startswith("рост") and not 50 <= num <= 220:
+        out.append(Issue.make(
+            "mismatch", field=name, value=value, expected="50–220",
+            message=f"«{name}» = {value} вне типичного диапазона роста, см (50–220)", severity="error"))
     limits = _LIMITS.get(domain or "", {})
     dim = dimension(u) if u else None
     if dim in limits:
-        base_u, hi, what = limits[dim]
+        base_u, hi, what = limits[dim][:3]
+        lo = limits[dim][3] if len(limits[dim]) > 3 else None
         conv = convert(num, u, base_u)
+        main_dim = dim != "length" or low.strip() in _MAIN_DIMS
+        if conv is not None and lo is not None and main_dim and 0 < conv < lo:
+            out.append(Issue.make(
+                "mismatch", field=name, value=f"{value} {u}", expected=f"от {fmt(lo)} {base_u}",
+                message=f"«{name}» = {value} {u} нереалистично мало для {what} (меньше {fmt(lo)} {base_u})",
+                suggestions=[f"{value} {x}" for x in _DIM_HINT.get(dim, []) if x != u][:2], severity="error"))
         if conv is not None and conv > hi:
             out.append(Issue.make(
                 "mismatch", field=name, value=f"{value} {u}", expected=f"до {fmt(hi)} {base_u}",

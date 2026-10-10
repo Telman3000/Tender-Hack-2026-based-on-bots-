@@ -8,6 +8,13 @@ from typing import Any
 from app.config import DB_PATH, PROCESSED_DIR
 
 
+def is_not_actual_name(name: str) -> bool:
+    """Files with all_not-actual / all-not-actual in the name must not enter ktru."""
+    low = (name or "").lower().replace("\\", "/")
+    base = low.rsplit("/", 1)[-1]
+    return "all_not-actual" in base or "all-not-actual" in base
+
+
 def connect(db_path: Path | None = None) -> sqlite3.Connection:
     path = db_path or DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)

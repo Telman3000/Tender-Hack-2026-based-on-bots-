@@ -10,7 +10,7 @@ from rapidfuzz.distance import Levenshtein  # noqa: F401  (kept for typo helpers
 
 from app.catalog import Catalog, KtruEntry, norm, tokens
 from app.config import CHAR_ALIASES
-from app.models import Candidate, Issue, KtruCandidate, NarrowingStep
+from app.models import Candidate, CharCheck, Issue, KtruCandidate, NarrowingStep
 from app.parser import RawKV
 from app.units import dimension, expected_dimension
 from app.validate import check_value
@@ -94,6 +94,16 @@ class NarrowResult:
     shown: list = field(default_factory=list)
     power_tool: bool = False
     margin: float = 999.0
+    # Person-1 search contract
+    area_size: int = 0
+    checked_count: int = 0
+    compatible_count: int = 0
+    completeness: str = "partial"  # full | partial
+    checks: list[CharCheck] = field(default_factory=list)
+    input_conflict: bool = False
+    distinct_name_count: int = 0
+    area_pass_done: bool = False
+    shortlist_codes: list[str] = field(default_factory=list)  # before final char elimination
 
 
 def score_name(query: str, candidate: str) -> float:
@@ -166,13 +176,18 @@ def narrow_ktru(
     res = NarrowResult()
     pool = cat.pool(domain if domain_detected else None)
     n0 = len(pool)
+    # Area = all positions of the selected domain (short name list is display order only)
+    res.area_size = n0
+    res.compatible_count = n0
     res.steps.append(NarrowingStep(
         step=1, label="Домен", stage="domain", remaining=n0, removed=0,
-        reason=f"Начальный пул КТРУ: домен «{DOMAIN_LABEL.get(domain, domain)}»",
+        reason=f"Область поиска КТРУ: домен «{DOMAIN_LABEL.get(domain, domain)}» ({n0} позиций)",
         note=f"{n0} позиций КТРУ в скоупе",
     ))
     if not pool:
         res.issues.append(Issue.make("missing", "Индекс КТРУ пуст — соберите catalog.db", severity="error"))
+        res.completeness = "full"
+        res.area_pass_done = True
         return res
 
     query, typo_issues = correct_query(cat, product, domain)
@@ -241,130 +256,241 @@ def narrow_ktru(
         pen += cat.qualifier_mask(pool, st)
     s1 = s1 - 25.0 * np.minimum(pen, 2)
     order = np.argsort(-s1, kind="stable")
-    best_s = float(s1[order[0]])
-    keep_idx = [int(i) for i in order[:80] if s1[i] >= NAME_MIN and s1[i] >= best_s - NAME_BAND]
-    removed = [int(i) for i in order if int(i) not in set(keep_idx)]
-    cands: list[list] = [[float(s1[i]), cat.entries[pool[i]], []] for i in keep_idx]
+    best_s = float(s1[order[0]]) if len(order) else 0.0
+    # Short list by name — порядок показа, не сужение области
+    short_local = [int(i) for i in order[:80] if s1[i] >= NAME_MIN and s1[i] >= best_s - NAME_BAND]
+    if not short_local and len(order):
+        short_local = [int(order[0])]
+    name_scores = {pool[i]: float(s1[i]) for i in range(len(pool))}
+    short_pool = [pool[i] for i in short_local]
+    # Full name shortlist (not only top-8 shown) — QA reads search.shortlist / debug.search
+    res.shortlist_codes = [cat.entries[i].code for i in short_pool]
     res.steps.append(NarrowingStep(
-        step=2, label="Наименование", stage="name_match", remaining=len(cands),
-        removed=n0 - len(cands),
-        reason=f"Сопоставление с наименованием «{query}»",
-        removed_codes=[cat.entries[pool[i]].code for i in removed[:10]],
-        top=[_cand(e, s) for s, e, _ in cands[:8]],
-        note=f"После сопоставления названия из {n0} позиций осталось {len(cands)}",
+        step=2, label="Наименование", stage="name_match", remaining=res.area_size,
+        removed=0,
+        reason=f"Порядок показа по сходству с «{query}» (область {res.area_size} не сужается)",
+        removed_codes=[],
+        top=[_cand(cat.entries[pool[i]], float(s1[i])) for i in short_local[:8]],
+        note=f"Короткий список для UI: {len(short_local)}; область поиска: {res.area_size}",
     ))
-    if not cands:
+    if best_s < NAME_MIN and not raw:
         res.issues.append(Issue.make(
             "missing", field="Наименование", value=product,
             message="Не удалось сопоставить описание ни с одной позицией КТРУ в скоупе",
             suggestions=["Уточните тип товара (стол/стул/куртка/дрель…)"], severity="warning",
         ))
         res.next_steps += ["Добавьте явное название товара", "Укажите 2–3 ключевые характеристики"]
+        res.completeness = "full" if domain_detected else "partial"
+        res.area_pass_done = True
+        res.compatible_count = res.area_size
         return res
 
-    # OKPD2 group: keep groups present among the leaders
-    lead = cands[0][0]
-    groups = {(e.okpd2 or "")[:8] for s, e, _ in cands if s >= lead - 8}
-    kept = [c for c in cands if (c[1].okpd2 or "")[:8] in groups]
-    rem = [c for c in cands if c not in kept]
+    # OKPD2 — только влияет на ранжирование короткого списка, область не режем
+    lead_score = float(s1[short_local[0]]) if short_local else 0.0
+    groups = {(cat.entries[pool[i]].okpd2 or "")[:8]
+              for i in short_local if float(s1[i]) >= lead_score - 8}
     res.steps.append(NarrowingStep(
-        step=3, label="ОКПД2", stage="okpd2", remaining=len(kept), removed=len(rem),
-        reason="Группы ОКПД2 лидеров: " + ", ".join(sorted(g for g in groups if g)),
-        removed_codes=[c[1].code for c in rem[:10]],
-        top=[_cand(e, s) for s, e, _ in kept[:8]],
+        step=3, label="ОКПД2", stage="okpd2", remaining=res.area_size, removed=0,
+        reason="Группы ОКПД2 лидеров (ранжирование): " + ", ".join(sorted(g for g in groups if g)),
+        removed_codes=[],
+        top=[_cand(cat.entries[pool[i]], float(s1[i])) for i in short_local[:8]],
     ))
-    cands = kept
 
-    # Characteristics: drop codes where the value is impossible (never drop all)
+    # --- Full-area characteristic pass (Person-1) ---
+    # origin=new не участвует: характеристика без CharSpec у позиции = UNKNOWN, код остаётся
+    compatible: set[int] = set(pool)
+    eliminated_checks: list[CharCheck] = []
+    matched: dict[int, list[str]] = {i: [] for i in pool}
+    score_boost: dict[int, float] = {i: 0.0 for i in pool}
     step_no = 4
+    constraints_applied = 0
+
     for kv in raw:
         exp_dim = expected_dimension(kv.name)
         if kv.unit and exp_dim and dimension(kv.unit) and dimension(kv.unit) != exp_dim:
-            continue  # wrong unit: reported by validation, must not filter codes
-        ok_c, bad_c, has_spec = [], [], 0
+            continue  # wrong unit: validation reports; must not filter
+        # polarity=negative + «нет»: не инвертировать в «да»; отсутствие характеристики ≠ запрет
+        neg_absent = (getattr(kv, "polarity", "positive") == "negative"
+                      and norm(kv.value) in {"нет", "отсутствует", "без"})
         label_cnt: Counter[str] = Counter()
-        for c in cands:
-            sp = cat.find_spec(c[1], kv.name)
+        has_spec = 0
+        fail_codes: list[str] = []
+        still: set[int] = set()
+        for idx in compatible:
+            e = cat.entries[idx]
+            sp = cat.find_spec(e, kv.name)
             if sp is None:
-                ok_c.append(c)
+                # нет характеристики у позиции → UNKNOWN, код остаётся
+                still.add(idx)
                 continue
             has_spec += 1
             label_cnt[sp.name] += 1
+            res.checked_count += 1
+            # keep value «нет» as-is (never flip to «да»)
             r = check_value(sp, kv.value, kv.unit, domain, emit=False)
             if r.ok:
-                c[0] += 8 if (sp.enums or sp.is_numeric) else 4
-                c[2].append(sp.name)
-                ok_c.append(c)
+                score_boost[idx] += 8 if (sp.enums or sp.is_numeric) else 4
+                matched[idx].append(sp.name)
+                still.add(idx)
+            elif neg_absent:
+                # negative fact: codes that have the char but don't accept «нет» stay
+                # (absence already kept above); do not hard-eliminate whole area on «без X»
+                still.add(idx)
             else:
-                bad_c.append(c)
+                fail_codes.append(e.code)
+                reason = (r.issue.message if r.issue else
+                          f"«{kv.name}»={kv.value} недопустимо для {e.code}")
+                eliminated_checks.append(CharCheck(
+                    code=e.code, char_name=sp.name, outcome="FAIL", reason=reason,
+                ))
         if not has_spec:
-            continue
-        if bad_c and ok_c:
-            cands = ok_c
-            reason = f"«{kv.value}{' ' + kv.unit if kv.unit else ''}» недопустимо для {len(bad_c)} кодов"
-        elif bad_c:
-            reason = "Значение не подходит ни одному коду — коды не отсеяны, см. ошибки"
-            bad_c = []
-        else:
-            reason = f"Характеристика есть у {has_spec} кодов, значение допустимо"
+            continue  # свойство ни у кого в КТРУ — как origin=new/portal, не отсекает
+        constraints_applied += 1
+        removed_n = len(compatible) - len(still)
+        compatible = still
+        reason = (
+            f"«{kv.value}{' ' + kv.unit if kv.unit else ''}» FAIL у {len(fail_codes)} кодов области"
+            if fail_codes else
+            f"Характеристика подтверждена у {has_spec} кодов области"
+        )
+        # топ для UI — по имени из короткого списка ∩ compatible
+        top_idx = [i for i in short_pool if i in compatible][:8] or sorted(
+            compatible, key=lambda i: -(name_scores.get(i, 0) + score_boost.get(i, 0))
+        )[:8]
         res.steps.append(NarrowingStep(
-            step=step_no, label=canonical_label(label_cnt, kv.name), stage="char_filter", remaining=len(cands),
-            removed=len(bad_c), reason=reason, removed_codes=[c[1].code for c in bad_c[:10]],
-            top=[_cand(e, s, m) for s, e, m in sorted(cands, key=lambda x: -x[0])[:8]],
+            step=step_no, label=canonical_label(label_cnt, kv.name), stage="char_filter",
+            remaining=len(compatible), removed=removed_n, reason=reason,
+            removed_codes=fail_codes[:10],
+            top=[_cand(cat.entries[i], name_scores.get(i, 0) + score_boost.get(i, 0), matched[i])
+                 for i in top_idx],
         ))
         step_no += 1
 
-    # variant choice inside a group: allowed values of required characteristics found in the text
+    res.area_pass_done = True
+    res.completeness = "full" if domain_detected else "partial"
+    res.compatible_count = len(compatible)
+
+    if not compatible:
+        res.checks = eliminated_checks[:50]
+        res.best = None
+        res.group = []
+        res.shown = []
+        res.distinct_name_count = 0
+        res.steps.append(NarrowingStep(
+            step=step_no, label="Итог", stage="final", remaining=0, removed=res.area_size,
+            reason="NO_MATCH_IN_SNAPSHOT: после полного прохода области совместимых кодов нет",
+            note="compatible_count=0",
+        ))
+        return res
+
+    # Rank compatible codes (name score + char boost)
+    ranked = sorted(
+        compatible,
+        key=lambda i: (-(name_scores.get(i, 0.0) + score_boost.get(i, 0.0)), cat.entries[i].code),
+    )
+    # soft OKPD2 preference among leaders
+    if groups:
+        pref = [i for i in ranked if (cat.entries[i].okpd2 or "")[:8] in groups]
+        if pref:
+            ranked = pref + [i for i in ranked if i not in pref]
+
     if text_stems is not None:
-        for c in cands:
-            for sp in c[1].specs.values():
+        for i in ranked[:80]:
+            for sp in cat.entries[i].specs.values():
                 if sp.required and sp.enums and _enum_from_text(sp, text_stems):
-                    c[0] += 6.0
-                    c[2].append(sp.name)
-    cands.sort(key=lambda x: (-x[0], x[1].code))
+                    score_boost[i] += 6.0
+                    matched[i].append(sp.name)
+        ranked = sorted(
+            compatible,
+            key=lambda i: (-(name_scores.get(i, 0.0) + score_boost.get(i, 0.0)), cat.entries[i].code),
+        )
+
+    cands = [
+        [name_scores.get(i, 0.0) + score_boost.get(i, 0.0), cat.entries[i], matched[i]]
+        for i in ranked
+    ]
     top = cands[0][0]
     group = [(s, e) for s, e, _ in cands if s >= top - GROUP_BAND]
-    res.group = group
-    res.best = cands[0][1]
-    distinct_names = {e.name for _, e in group}
+    # Prefer name-shortlist leaders inside the score band for display grouping
+    group_codes_short = {cat.entries[i].code for i in short_pool}
+    group_disp = [(s, e) for s, e in group if e.code in group_codes_short] or group
+    res.group = group_disp if group_disp else group
+    res.best = res.group[0][1]
+    distinct_names = {e.name for _, e in res.group}
+    res.distinct_name_count = len(distinct_names)
     other = next((sc for sc, e, _ in cands if e.name != res.best.name), None)
     res.margin = (top - other) if other is not None else 999.0
     final_note = "Конечный код выбран"
     if len(distinct_names) > 1:
-        final_note = f"Конкурируют {len(group)} кодов — нужно уточнение"
+        final_note = f"Конкурируют {len(res.group)} кодов — нужно уточнение"
         res.issues.append(Issue.make(
             "ambiguous",
-            f"Найдено {len(group)} близких кодов КТРУ — однозначно определить нельзя",
+            f"Найдено {len(res.group)} близких кодов КТРУ — однозначно определить нельзя",
             suggestions=["Добавьте отличительные характеристики из топ-кандидатов"], severity="warning",
         ))
-    elif len(group) > 1:
-        final_note = f"Группа вариаций «{res.best.name}»: {len(group)} кодов"
-    # most discriminating characteristic among the group
-    if len(group) > 1:
+    elif len(res.group) > 1:
+        final_note = f"Группа вариаций «{res.best.name}»: {len(res.group)} кодов"
+    if len(res.group) > 1:
         user = {kv.name.lower() for kv in raw}
         cnt: Counter[str] = Counter()
         vals: dict[str, set] = {}
-        for _, e in group[:10]:
+        for _, e in res.group[:10]:
             for k, sp in e.specs.items():
                 if k in user:
                     continue
                 cnt[sp.name] += 1
                 vals.setdefault(sp.name, set()).update(sp.enums[:20] or [str(sp.ranges[:1])])
-        ranked = sorted(cnt, key=lambda n: (-(len(vals.get(n, ())) > 1), -cnt[n], n))
-        for n in ranked[:3]:
+        ranked_q = sorted(cnt, key=lambda n: (-(len(vals.get(n, ())) > 1), -cnt[n], n))
+        for n in ranked_q[:3]:
             res.next_steps.append(f"Уточните: {n}")
-    # show distinct names first so the UI/top-3 covers alternative groups
+
     seen_n: set[str] = set()
     firsts, rest = [], []
-    for s_, e in group + [(s_, e) for s_, e, _ in cands[len(group):len(group) + 10]]:
+    extra = [(s_, e) for s_, e, _ in cands[len(res.group):len(res.group) + 10]]
+    for s_, e in list(res.group) + extra:
         (rest if e.name in seen_n else firsts).append((s_, e))
         seen_n.add(e.name)
-    shown = (firsts[:3] + [x for x in group if x not in firsts[:3]])[:8]
+    shown = (firsts[:3] + [x for x in res.group if x not in firsts[:3]])[:8]
     res.shown = shown
+
+    # checks: только показанные кандидаты + реально отсеянные FAIL (не все 3391)
+    shown_codes = {e.code for _, e in shown}
+    checks_out: list[CharCheck] = []
+    for ch in eliminated_checks:
+        if ch.code in shown_codes or ch.outcome == "FAIL":
+            checks_out.append(ch)
+    for _, e in shown:
+        for kv in raw:
+            sp = cat.find_spec(e, kv.name)
+            if sp is None:
+                checks_out.append(CharCheck(
+                    code=e.code, char_name=kv.name, outcome="UNKNOWN",
+                    reason="Характеристика отсутствует у позиции КТРУ",
+                ))
+            else:
+                r = check_value(sp, kv.value, kv.unit, domain, emit=False)
+                if r.ok and not any(c.code == e.code and c.char_name == sp.name and c.outcome == "PASS"
+                                    for c in checks_out):
+                    checks_out.append(CharCheck(
+                        code=e.code, char_name=sp.name, outcome="PASS", reason=None,
+                    ))
+    # cap + dedupe
+    seen_ck: set[tuple] = set()
+    uniq: list[CharCheck] = []
+    for c in checks_out:
+        key = (c.code, c.char_name, c.outcome)
+        if key in seen_ck:
+            continue
+        seen_ck.add(key)
+        uniq.append(c)
+        if len(uniq) >= 80:
+            break
+    res.checks = uniq
+
     res.steps.append(NarrowingStep(
         step=step_no, label="Итог", stage="final" if len(distinct_names) == 1 else "ambiguous",
-        remaining=len(group), removed=len(cands) - len(group),
-        reason=final_note, removed_codes=[e.code for _, e, _ in cands[len(group):][:10]],
+        remaining=res.compatible_count, removed=res.area_size - res.compatible_count,
+        reason=final_note, removed_codes=[e.code for _, e, _ in cands[len(res.group):][:10]],
         top=[_cand(e, s) for s, e in shown], note=final_note,
     ))
     return res

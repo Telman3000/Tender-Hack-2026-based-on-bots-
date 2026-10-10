@@ -33,6 +33,13 @@ def test_analyze_incomplete():
         assert res.status in {"ok", "need_more", "ambiguous"}
         # incomplete input should usually ask for more OR still propose candidates
         assert res.narrowing or res.issues
+        # Person-1: area_size = полный домен «инструменты», не короткий список по имени
+        tools_n = len(eng.catalog.pool("tools"))
+        assert res.search.area_size == tools_n
+        assert res.search.area_size > 80  # not the short-list cap
+        assert res.search.completeness in {"full", "partial"}
+        assert res.match_status is not None
+        assert res.question is None or res.question.field
     finally:
         eng.close()
 

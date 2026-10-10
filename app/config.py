@@ -6,6 +6,7 @@ DATA_DIR = ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
 DB_PATH = Path(os.environ.get("CATALOG_DB", PROCESSED_DIR / "catalog.db"))
 FRONTEND_DIR = ROOT / "frontend"
+IMPORTER_VERSION = "1.1.0"
 
 # OKPD2 prefixes for hackathon scope
 OKPD2_PREFIXES = {
