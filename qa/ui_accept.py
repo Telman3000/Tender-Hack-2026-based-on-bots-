@@ -22,6 +22,12 @@ def launch(p):
     raise RuntimeError("no browser")
 
 
+def hrow(pg):
+    """Value cell of the «Высота» row (row order differs between UI versions)."""
+    i = pg.evaluate("() => [...document.querySelectorAll('#result [data-k=name]')].findIndex(e => e.value === 'Высота')")
+    return pg.locator('#result [data-k="name"]').nth(max(i, 0)).locator("xpath=ancestor::tr").locator('[data-k="value"]')
+
+
 def main(base, out):
     out.mkdir(parents=True, exist_ok=True)
     rep, errs, calls = {}, [], []
@@ -35,7 +41,7 @@ def main(base, out):
         pg.fill("#text", TEXT); pg.select_option("#domain", "furniture"); pg.click("#run"); pg.wait_for_timeout(2500)
         shot("01_initial_result.png")
         res0 = pg.inner_text("#result")
-        h = pg.locator('#result [data-k="value"]').first
+        h = hrow(pg)
         rep["first_value"] = h.input_value()
         n = len(calls); h.fill("900"); h.press("Tab"); pg.wait_for_timeout(3000)
         shot("02_after_edit_900.png")
@@ -48,7 +54,7 @@ def main(base, out):
             "request_text": body.get("text"),
             "response_has_900": any(str(c.get("value")) == "900" for c in rj.get("characteristics", [])),
             "response_input_text": rj.get("input_text"),
-            "table_value_after": pg.locator('#result [data-k="value"]').first.input_value(),
+            "table_value_after": hrow(pg).input_value(),
             "textarea_after": pg.input_value("#text"),
         }
         rep["edit"]["text_synced"] = "900" in rep["edit"]["textarea_after"] and "750" not in rep["edit"]["textarea_after"]
@@ -59,7 +65,7 @@ def main(base, out):
         if btn.count():
             n = len(calls); btn.click(); pg.wait_for_timeout(3000); shot("03_after_reset.png")
             res1 = pg.inner_text("#result")
-            val = pg.locator('#result [data-k="value"]').first.input_value(); txt = pg.input_value("#text")
+            val = hrow(pg).input_value(); txt = pg.input_value("#text")
             last = calls[-1][1].json() if len(calls) > n else {}
             rep["reset"] = {"requests": len(calls) - n, "value_restored": val, "textarea": txt,
                             "response_input_text": last.get("input_text"),
