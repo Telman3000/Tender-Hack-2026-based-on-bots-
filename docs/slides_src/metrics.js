@@ -36,6 +36,6 @@ module.exports = {
     p95: { main: '126–194 мс', heldOut: '102–138 мс' },
     breakIt: { passed: '32/32', pct: '100%', note: '0 ответов 500, 0 ошибок JS' },
     howFunnel: '1309 → 3',                                 // TO42, инструменты
-    batch: { rows: 11, time: '≈1 с', determined: 8, ambiguous: 2, notFound: 1, complete: 4, incomplete: 6, withErrors: 1 } // docs/demo_batch.csv
+    batch: { rows: 13, time: '≈1,3 с', timeSpoken: 'около 1,3 секунды', determined: 9, ambiguous: 2, notFound: 0, outOfScope: 2, complete: 4, incomplete: 8, withErrors: 1 } // docs/demo_batch.csv, screens/batch_view.png (main c6a89cd)
   }
 };

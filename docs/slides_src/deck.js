@@ -285,6 +285,7 @@ function setFinalTheme() {
   FONT = fs.existsSync('/usr/share/fonts') && require('child_process').execSync('fc-list : family').toString().indexOf('Open Sans') >= 0 ? 'Open Sans' : 'Inter';
 }
 const BADGE = { ktru: '264B82', portal: '1F8A8A', fresh: 'F07D1A' };
+function pngSize(f) { const h = fs.readFileSync(f).subarray(16, 24); return { w: h.readUInt32BE(0), h: h.readUInt32BE(4) }; }
 function pill(s, label, b, fill, o) {
   roundRect(s, b, fill, { adj: 0.5 });
   text(s, label, b, Object.assign({ fontFace: FONT, fontSize: 11, bold: true, color: WHITE, align: 'center', valign: 'middle' }, o));
@@ -328,8 +329,14 @@ function fHow(p, n, t) {
     body(s, st[2], [1.85, y + 0.55, 3.8, 0.85], { fontSize: 12.5 });
   });
   card(s, [6.05, 1.9, 6.43, 4.69]);
-  const iw = 6.23, ih = iw * 2428 / 1440;
-  s.addImage({ path: path.join(SRC, 'screens', 'main_result.png'), x: 6.15, y: 2.0, w: iw, h: ih, sizing: { type: 'crop', x: 0, y: 0, w: iw, h: 4.49 } });
+  // two crops of the retaken screenshot (px coords of docs/screens/main_result.png, 1425 px wide):
+  // top = input with «27 м» highlight + result card; bottom = right column «Сужение кодов КТРУ» (1309 → 3)
+  const mr = path.join(SRC, 'screens', 'main_result.png'), ms = pngSize(mr), iw = 6.23;
+  const k1 = iw / ms.w, topH = 2.58;
+  s.addImage({ path: mr, x: 6.15, y: 2.0, w: ms.w * k1, h: ms.h * k1, sizing: { type: 'crop', x: 0, y: 0, w: iw, h: topH } });
+  hLine(s, 6.15, 4.65, iw, LIGHTB, 1);
+  const fx = 520, fy = 1775, fwPx = 820, k2 = iw / fwPx, botH = 1.8;
+  s.addImage({ path: mr, x: 6.15, y: 4.72, w: ms.w * k2, h: ms.h * k2, sizing: { type: 'crop', x: fx * k2, y: fy * k2, w: iw, h: botH } });
   return s;
 }
 
@@ -391,14 +398,15 @@ function fFill(p, n, t) {
   });
   card(s, [0.85, 3.55, 5.75, 3.05]);
   label(s, 'Блок «Допишите»: допустимые значения КТРУ — чипы', [1.05, 3.67, 5.3, 0.3]);
-  const fh = 2.38, fw = fh * 832 / 461;
+  const fsz = pngSize(path.join(SRC, 'screens', 'fill_block.png')), fh = 2.38, fw = fh * fsz.w / fsz.h;
   s.addImage({ path: path.join(SRC, 'screens', 'fill_block.png'), x: 0.85 + (5.75 - fw) / 2, y: 4.07, w: fw, h: fh });
   card(s, [6.83, 1.85, 5.65, 4.75]);
   label(s, 'Пакетная проверка (CSV): ' + F.batch.rows + ' строк ≈ ' + F.batch.time.replace('≈', '').trim(), [7.03, 1.97, 5.3, 0.3]);
-  const bw = 5.25, bh = bw * 1357 / 1440;
-  s.addImage({ path: path.join(SRC, 'screens', 'batch_view.png'), x: 7.03, y: 2.4, w: bw, h: bh, sizing: { type: 'crop', x: 0, y: bw * 330 / 1440, w: bw, h: 3.05 } });
+  const bsz = pngSize(path.join(SRC, 'screens', 'batch_view.png')), bw = 5.25, bh = bw * bsz.h / bsz.w;
+  // crop starts at the «Обработано …» line (≈462 px of 1425-px-wide screenshot)
+  s.addImage({ path: path.join(SRC, 'screens', 'batch_view.png'), x: 7.03, y: 2.4, w: bw, h: bh, sizing: { type: 'crop', x: 0, y: bw * 462 / bsz.w, w: bw, h: 3.05 } });
   const b = F.batch;
-  body(s, [{ text: 'Код: ', options: { bold: true } }, { text: b.determined + ' определён · ' + b.ambiguous + ' неоднозначно · ' + b.notFound + ' не найден', options: { breakLine: true } },
+  body(s, [{ text: 'Код: ', options: { bold: true } }, { text: b.determined + ' определён · ' + b.ambiguous + ' неоднозначно · ' + (b.notFound ? b.notFound + ' не найден' : b.outOfScope + ' не наша категория'), options: { breakLine: true } },
     { text: 'Карточка: ', options: { bold: true } }, { text: b.complete + ' заполнена · ' + b.incomplete + ' неполная · ' + b.withErrors + ' с ошибками', options: { breakLine: true } },
     { text: 'Щелчок по строке — открыть в редакторе; выгрузка в CSV', options: { color: MUTED } }], [7.03, 5.55, 5.3, 0.95], { fontSize: 12 });
   return s;
