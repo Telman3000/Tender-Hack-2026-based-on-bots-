@@ -35,13 +35,16 @@ zip-части напрямую и разбирает все файлы `nsiKTRU
 ## Сборка индекса
 
 ```bash
-python -m scripts.build_index --materials "/path/to/Казань 2026" --ktru-files 400
+python -m scripts.build_index --materials "/path/to/Казань 2026"
 # Windows (пример):
-python -m scripts.build_index --materials C:\Users\Asus\Desktop\Vtoroy_work\Kazan2026_unzipped --ktru-files 400
+python -m scripts.build_index --materials C:\Users\Asus\Desktop\Vtoroy_work\Kazan2026_unzipped
 ```
 
 - сборка занимает около 70 с, результат — `data/processed/catalog.db` (~120 МБ, в git не попадает);
-- `--ktru-files` ограничивает число частей КТРУ (400 = все), `--ste-limit` — число СТЕ
+- по умолчанию разбираются **все** части КТРУ: в базе должно получиться 3391 позиция
+  (мебель 355, одежда 1522, инструменты 1514 — итог печатается в конце сборки);
+  `--ktru-files N` ограничивает число частей (только для отладки: с малым N индекс неполный
+  и качество подбора резко падает), `--ste-limit` — число СТЕ
   на категорию (по умолчанию 20000), `--db` — другой путь к базе;
 - в базе: `ktru` (активные позиции в скоупе, ~3.4 тыс.), `ktru_char_values`
   (допустимые значения, диапазоны min/max, единицы ОКЕИ), `portal_ste`, `portal_chars`.
