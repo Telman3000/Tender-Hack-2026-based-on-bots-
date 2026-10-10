@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Помощник заполнения характеристик — Портал поставщиков</title>
-  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20261010g" />
-  <link rel="stylesheet" href="/static/styles.css?v=20261010g" />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20261010h" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261010h" />
 </head>
 <body>
   <header class="top">
@@ -70,7 +70,7 @@
   <main class="layout single hidden" id="viewBatch">
     <section class="card">
       <h1>Пакетная проверка</h1>
-      <p class="lead">CSV-файл с одним столбцом наименований (UTF-8 или Windows-1251, разделитель «;» или «,», заголовок необязателен). Каждая строка проверяется так же, как одиночный товар; щелчок по строке открывает её в редакторе.</p>
+      <p class="lead">CSV-файл с одним столбцом наименований (UTF-8 или Windows-1251, одна строка — одно наименование, «;» и «,» внутри текста допустимы, кавычки по правилам CSV, заголовок необязателен). Каждая строка проверяется так же, как одиночный товар; щелчок по строке открывает её в редакторе.</p>
       <label class="drop" id="drop" for="csvFile">Перетащите CSV сюда или <a href="#" id="pick">выберите файл</a>
         <input type="file" id="csvFile" accept=".csv,.txt,text/csv" hidden />
       </label>
@@ -87,6 +87,6 @@
 
   <footer class="foot">Источники характеристик: <span class="badge ktru">КТРУ</span> <span class="badge portal">Портал</span> <span class="badge new">Новая</span></footer>
 
-  <script src="/static/app.js?v=20261010g"></script>
+  <script src="/static/app.js?v=20261010h"></script>
 </body>
 </html>

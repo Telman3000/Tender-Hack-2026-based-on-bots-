@@ -176,3 +176,30 @@ textarea:focus,select:focus,input:focus{border-color:var(--pp-navy);box-shadow:0
 .corr .from{color:var(--pp-danger)}.corr .to{color:var(--pp-success)}
 .hl-preview mark.error{background:var(--pp-danger-light);color:var(--pp-danger);border-bottom-color:var(--pp-danger)}
 .hl-preview mark.warning{background:var(--pp-warning-light);color:#B4500C;border-bottom-color:var(--pp-warning)}
+
+/* ---------- адаптив: без горизонтального скролла страницы (≤ 420 px) ---------- */
+html,body{max-width:100%;overflow-x:hidden}
+.layout > *,.card,.panel,section,main,form,.fill,.corr,.batch-wrap{min-width:0}
+.code,.badge,td,th,.sbadge,.chip{overflow-wrap:anywhere;word-break:break-word}
+textarea{max-width:100%;box-sizing:border-box}
+img,svg,canvas{max-width:100%}
+table.chars,table.batch{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media(max-width:900px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:600px){
+  .top-inner,.nav-inner,.crumbs,.page-title,.layout,.foot{padding-left:12px;padding-right:12px}
+  .top-inner{flex-wrap:wrap;gap:8px}
+  .top-inner > *{min-width:0}
+  .nav-inner{flex-wrap:wrap;gap:0}
+  .nav a,.nav button{padding:10px 8px}
+  .page-title{font-size:20px}
+  .fill-range input{width:100%}
+  .row,.actions,.btns,.summary,.toolbar,.pc,.head,.badges{flex-wrap:wrap}
+  .pc-img{width:48px;height:48px}
+  table.chars,table.batch{font-size:13px}
+}
+table.batch th,table.batch td{word-break:normal;overflow-wrap:break-word;min-width:84px}
+table.batch td.num,table.batch th:first-child{min-width:28px}
+table.batch td:nth-child(2){min-width:220px}
+table.chars th,table.chars td{word-break:normal;overflow-wrap:break-word;min-width:72px}

@@ -640,27 +640,46 @@ function decodeCsv(buf) {
   try { return new TextDecoder("utf-8", { fatal: true }).decode(u8).replace(/^\uFEFF/, ""); }
   catch (_) { return new TextDecoder("windows-1251").decode(u8); }
 }
-function parseCsvLine(line, delim) {
-  const out = []; let cur = "", q = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
-    else if (ch === '"' && cur === "") q = true;
-    else if (delim && ch === delim) { out.push(cur); cur = ""; }
+// CSV-разбор всего файла с учётом кавычек ("" — экранирование, переводы строк внутри кавычек, CRLF).
+function csvRecords(text, delim) {
+  const rows = []; let row = [], cur = "", q = false, quoted = false;
+  const endRow = () => { row.push(cur); rows.push({ cells: row, quoted }); row = []; cur = ""; quoted = false; };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; continue; }
+    if (ch === '"' && cur.trim() === "") { q = true; quoted = true; cur = ""; }
+    else if (delim && ch === delim) { row.push(cur); cur = ""; }
+    else if (ch === "\r") { if (text[i + 1] === "\n") i++; endRow(); }
+    else if (ch === "\n") endRow();
     else cur += ch;
   }
-  out.push(cur);
-  return out;
+  if (cur !== "" || row.length) endRow();
+  return rows;
 }
-// 1 столбец наименований. Разделитель: «;», если он есть в файле; иначе «,» — но только когда
-// строки начинаются с кавычки (в наименованиях запятые встречаются, поэтому без кавычек строка берётся целиком).
+function parseCsvLine(line, delim) { const r = csvRecords(line, delim)[0]; return r ? r.cells : [""]; }
+const NAME_COL_RE = /^(наименование|название|наим|name|text|текст|товар|описание|description|title)/i;
+// Файл — 1 столбец наименований. Неэкранированные «;» и «,» — часть описания.
+// Несколько столбцов — только если заголовок явно их объявляет; тогда берём столбец наименования.
 function parseNames(text) {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (!lines.length) return [];
-  const delim = lines.some((l) => l.includes(";")) ? ";" : lines.every((l) => l.trim().startsWith('"')) ? "," : null;
-  let names = lines.map((l) => (parseCsvLine(l, delim)[0] || "").trim()).filter(Boolean);
-  if (names.length && /^(наименование|название|name|text|товар|описание)/i.test(names[0]) && names[0].length < 40 && !/\d/.test(names[0])) names = names.slice(1);
-  return names;
+  text = String(text || "").replace(/^\uFEFF/, "");
+  const firstLine = (text.split(/\r?\n/).find((l) => l.trim()) || "").trim();
+  let delim = null, col = 0, skipHeader = false;
+  for (const d of [";", ",", "\t"]) {
+    if (!firstLine.includes(d)) continue;
+    const cells = parseCsvLine(firstLine, d).map((c) => c.trim());
+    const idx = cells.findIndex((c) => NAME_COL_RE.test(c) && c.length < 40);
+    const headerLike = cells.length > 1 && idx >= 0 && cells.every((c) => c.length < 40 && !/\d{2,}/.test(c));
+    if (headerLike) { delim = d; col = idx; skipHeader = true; break; }
+  }
+  const recs = csvRecords(text, delim);
+  let names = recs.map((r, i) => {
+    if (delim) return (r.cells[col] || "").trim();
+    // одна колонка: если строка в кавычках — значение из кавычек (+ хвост), иначе строка целиком
+    return r.cells.join("").trim();
+  });
+  if (skipHeader) names = names.slice(1);
+  else if (names.length && NAME_COL_RE.test(names[0]) && names[0].length < 40 && !/\d/.test(names[0])) names = names.slice(1);
+  return names.filter(Boolean);
 }
 function summarize(results) {
   const s = { total: results.length, determined: 0, ambiguous: 0, not_found: 0, out_of_scope: 0, complete: 0, incomplete: 0, invalid: 0, errors: 0 };
@@ -723,6 +742,23 @@ async function analyzeOne(text) {
     return [data, Math.round(performance.now() - t)];
   } catch (e) { return [{ error: e.message }, Math.round(performance.now() - t)]; }
 }
+// Возможности пакетного API: один тихий запрос к /openapi.json, без обращений к несуществующим путям.
+let batchCapsPromise = null;
+function batchCaps() {
+  if (!batchCapsPromise) batchCapsPromise = (async () => {
+    try {
+      const res = await fetch("/openapi.json", { cache: "no-store" });
+      if (!res.ok) return { batch: false, stream: false };
+      const spec = await res.json();
+      const op = spec && spec.paths && spec.paths["/api/analyze/batch"] && spec.paths["/api/analyze/batch"].post;
+      if (!op) return { batch: false, stream: false };
+      const blob = JSON.stringify(op).toLowerCase();
+      const stream = (op.parameters || []).some((p) => p && p.name === "stream") || /ndjson|stream/.test(blob);
+      return { batch: true, stream };
+    } catch (_) { return { batch: false, stream: false }; }
+  })();
+  return batchCapsPromise;
+}
 async function runBatch(names) {
   if (batch.running) return;
   batch.running = true;
@@ -742,9 +778,10 @@ async function runBatch(names) {
   const payload = JSON.stringify({ items: batch.items.slice(0, 500) });
   let ok = false;
   batch.mode = "per-row";
-  if (batch.items.length <= 500) {
+  const caps = await batchCaps();
+  if (caps.batch && batch.items.length <= 500) {
     // 1) потоковый ответ NDJSON: строка на позицию, последняя — summary
-    try {
+    if (caps.stream) try {
       const res = await fetch("/api/analyze/batch?stream=1", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload });
       if (res.ok && res.body && res.body.getReader) {
         const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "", k = 0, any = false;
@@ -789,7 +826,7 @@ async function runBatch(names) {
   $("exportCsv").disabled = false;
   batch.running = false;
 }
-const csvCell = (v) => { const s = String(v ?? ""); return /[";\n\r]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s; };
+const csvCell = (v) => { const s = String(v ?? ""); return /[";,\n\r]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s; };
 function buildExportCsv() {
   const head = ["№", "Исходный текст", "Код КТРУ", "Наименование", "Статус кода", "Статус карточки", "Не хватает обязательных", "Замечания", "Время, мс", "Характеристики"];
   const lines = [head.join(";")];
@@ -831,4 +868,4 @@ $("batchBody").addEventListener("click", (e) => {
   $("text").value = r.text; $("domain").value = "";
   analyze(false);
 });
-window.__ktru = { batch, parseNames, decodeCsv, buildExportCsv, handleFile, runBatch, showTab, state };
+window.__ktru = { batch, batchCaps, csvRecords, parseNames, decodeCsv, buildExportCsv, handleFile, runBatch, showTab, state };
