@@ -125,3 +125,33 @@ Presentation check (presentation.pptx slide 6 = presentation_7min.pptx slide 8 u
 - Header «Цифры на текущей версии · main 0c9b8c7» -> true for 0c9b8c7 but outdated once core d35047b is merged.
 - Correct: top-1/top-3 dev 44/45, 45/45; holdout 43/45, 44/45; median ~50 ms; ≈600 ms debounce (DEBOUNCE_MS = 600); «355 → 2»; «27 м → 27 мм».
 - Not on slides: pytest 58, 3391 positions, load test 50 parallel p50 3.57 s.
+
+
+# Acceptance core 9e6d6a9 + ui 8c1c598 on origin/main 0c9b8c7 (local merge d15f95f, no conflicts) — 2026-10-10 13:13 MSK
+
+pytest 62 passed. Two runs each, identical results.
+
+| set | d35047b | 9e6d6a9 |
+|---|---|---|
+| dev 45 top-1 / top-3 / status | 44 / 45 / 45 | 44 / 45 / 45 (CL08 top-1 miss) |
+| holdout top-1 / top-3 / status | 43 / 44 / 40 | 43 / 44 / **43** из 45 |
+| holdout by category (top-1/top-3/status) | — | clothing 13/14/14, furniture 15/15/15, tools 15/15/14 |
+| errors | 30 из 30 | 30 из 30 (unit 8, unrealistic 8, nonexistent 7, typo 7) — optimistic, tuned after seeing the set |
+| false alarms strict | 4 из 42 | **1 из 42** (H31) |
+| false alarms soft | 2 из 42 | 3 из 42 (H04, H17, H27) |
+| latency p50 / p95 (dev, 2 runs) | — | 54/186, 55/169 ms; holdout 53/158, 48/173 ms |
+
+Flagged clean cases:
+- H31 «Электролобзик … Вес 2.1 г» error: GENUINE (the portal card's weight unit is wrong). Counts as a holdout status miss only because GT expected a clean card.
+- H04 warning «Вид защиты» = «защита от общих производственных загрязнений» not in this position (exists in others): GENUINE mismatch with the chosen code; the full value is now parsed correctly.
+- H17 warning «Наполнитель» = «высокоэластичный поролон» (mapping marked uncertain): FALSE (filler material mapped onto spring type), downgraded to a warning.
+- H27 unitless 1100х250х1000 «принято мм»: by design, not an error. «алюминиевый профиль» now matches Алюминий.
+Holdout misses: H02 (Брюки, expected group 2nd), H09, H31.
+H09 «Сапоги резиновые с защитным подноском»: engine top-1 15.20.31.000-00000003 «Обувь с защитным металлическим подноском» (ACTIVE) fits the explicit protective toe cap;
+GT 15.20.11.113 «Сапоги резиновые формовые» also fits (rubber moulded boots). The GT is too narrow; the engine's top-1 is defensible (the other two in top-3,
+vibration-proof/dielectric, do not fit). GT not edited.
+Hacks: no holdout/errors strings in app code. New COMMON_WORDS list (config.py) contains «поставки», which fixes H23; it is a generic list of procurement words, not a case string.
+
+UI (headless Edge, port 8811, screenshots wt-qa/_out/ui-9e6d6a9/): TO42 «Исправьте «длина»: 27 мм» is now in the required list (not grey).
+MANUAL_CHECK 5-minute steps: 1 open/no console errors PASS; 2 TO42 highlight/corrections/badges PASS; 3 270 мм + Тип исполнения B -> «Карточка: заполнена» PASS;
+4 «Ключ» required 1, optional grey PASS; 5 desk 750->900->reset 750 PASS; 6 chair «бетон» error + highlight PASS; 7 pytest PASS (62). JS errors: none.
