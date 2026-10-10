@@ -6,6 +6,7 @@ const PptxGenJS = require('pptxgenjs');
 const DOCS = path.join(__dirname, '..');
 const SRC = fs.existsSync(path.join(DOCS, 'src', 'process.png')) ? path.join(DOCS, 'src') : DOCS;
 const M = require('./metrics.js');
+function plural(n, one, few, many) { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 10 || b >= 20) ? few : many; }
 
 let BLUE = '264B82';     // dark portal blue
 let BRIGHT = '1E88E5';   // bright accent blue
@@ -216,7 +217,7 @@ function sResults(p, n, t) {
     ['Внесённые ошибки пойманы**', v(ie.caught)],
     ['Время ответа: медиана / p95*', v(M.latencyMedian + ' / ' + M.latencyP95)],
     ['Нагрузка: параллельных запросов', v(M.loadParallel + ' без ошибок')],
-    ['Справочник КТРУ (весь архив)', v(M.ktruItems + ' позиция')],
+    ['Справочник КТРУ (весь архив)', v(M.ktruItems + ' ' + plural(+String(M.ktruItems).replace(/\D/g, ''), 'позиция', 'позиции', 'позиций'))],
     ['Автотесты pytest', v(M.autotests)],
     ['Чистая сборка индекса', v(M.indexBuild)]];
   s.addTable(rows, { x: 6.75, y: 2.5, w: 5.75, colW: [3.25, 2.5], rowH: 0.33, fontFace: FONT, fontSize: 12, color: INK, border: { type: 'solid', pt: 0.75, color: 'D5DCE6' }, valign: 'middle', margin: 0.06 });
@@ -423,7 +424,7 @@ function fMetrics(p, n, t) {
     [M.main.top3 + ' · ' + M.heldOut.top3, 'Код в топ-3', 'основной / отложенный: ' + M.main.top3Pct + ' / ' + M.heldOut.top3Pct],
     [F.falseAlarmsStrict, 'Ложные тревоги (строго)', 'H31 — в карточке реальная ошибка: лобзик 2,1 г'],
     [ie.caught + '*', 'Внесённые ошибки пойманы', 'единицы ' + ie.units + ', числа ' + ie.unrealistic + ', несуществующие ' + ie.nonExistent + ', опечатки ' + ie.typos],
-    [F.latencyHeadline, 'Время ответа, p50', 'основной ' + F.p50.main + ', отложенный ' + F.p50.heldOut],
+    [F.latencyHeadline, 'Время ответа, p50', 'основной ' + F.p50.main.replace(/\s*мс$/, '') + ', отложенный ' + F.p50.heldOut],
     [F.breakIt.passed, '«Сломай решение»', F.breakIt.pct + ': ' + F.breakIt.note]];
   tiles.forEach(function (c, i) {
     const x = 0.85 + (i % 3) * 3.94, y = 2.2 + Math.floor(i / 3) * 2.12, w = 3.75, h = 1.95;
