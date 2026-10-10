@@ -62,3 +62,40 @@ Strict (status error or error-severity issue): 1 из 42 — H12 glove size 11.
 Soft (any warning other than missing/ambiguous): 2 из 42 — H12, H27 (unitless 1100х250х1000 -> «принято … мм», by design).
 Details: qa/results_holdout.csv, qa/errors_results.csv, qa/false_alarms.csv. Scripts: qa/make_holdout.py, qa/run_holdout.py,
 qa/run_eval.py --cases=holdout.csv.
+
+
+# Acceptance feature/core d35047b (on origin/main 0c9b8c7, fast-forward, no conflicts) — 2026-10-10 12:57 MSK
+
+pytest 58 passed. All runs done twice, identical results.
+
+| set | previous (0c9b8c7) | d35047b |
+|---|---|---|
+| dev 45 top-1 / top-3 / status | 96% / 98% / 100% (summary 98%) | 98% / 100% / 100% (CL08 top-1 miss) |
+| holdout top-1 / top-3 / status | 43 / 44 / 43 из 45 | 43 / 44 / **40** из 45 |
+| errors detection | 19 из 30 | **30 из 30** (unit 8/8, unrealistic 8/8, nonexistent 7/7, typo 7/7) |
+| false alarms clean strict | 1 из 42 (H12) | **4 из 42** (H04, H17, H27, H31) |
+| false alarms clean soft | 2 из 42 (H12, H27) | 2 из 42 (H23, H27) |
+
+Holdout by category, d35047b: clothing 13/14/13 из 15, furniture 15/15/13 из 15, tools 15/15/14 из 15.
+
+Strict flags, judged one by one:
+- H04 «Фартук мед. клеенка Вид защиты Защита от общих производственных загрязнений…» -> not_allowed «Вид защиты» = «защита».
+  FALSE: only the first word was taken as the value; the real value is not in this position's list, but the error names a value the user never wrote.
+- H17 «Диван … Вид материала наполнителя Высокоэластичный поролон» -> not_allowed «Наполнитель» = «высокоэластичный поролон» (allowed: spring block types / Беспружинный).
+  FALSE: filler material was mapped onto the KTRU spring-type characteristic; foam = «Беспружинный».
+- H27 «Витрина … Вид материала каркаса алюминиевый профиль» -> not_allowed (allowed: Алюминий, Сталь нержавеющая).
+  FALSE as an error: «алюминиевый профиль» = Алюминий; it should be an autofix/warning, not severity=error.
+- H31 «Электролобзик Graphite 58G071 … Вес 2.1 г» -> mismatch «Вес 2.1 г нереалистично мало», suggestion 2.1 кг.
+  REAL: the portal card really has a unit error.
+Regression: real false alarms grew from 1 (H12, now fixed) to 3 (H04, H17, H27), plus soft H23 typo «поставки»->«подставки» («Вид поставки» is a correct word).
+Holdout status 43 -> 40 is entirely these 3 false errors.
+
+Blindness: no strings from errors.csv/holdout.csv in app/ code (only a docstring example «производственый», «Шуруповерд»; tests use similar
+phrases such as «Молоток тип ювелирный»). The changes are general rules (parsing «name value», size range per item type, lower limits,
+typo check on all words), but clearly made in response to the published misses, so errors.csv is no longer blind (30/30 is optimistic).
+
+docs/api.md vs real response («Ключ гаечный 17х19 мм длина 27 см цвет чорный», port 8809): top-level fields, characteristics/issues/narrowing
+fields and types match; the example fragment matches exactly. Gaps: empty text -> HTTP 422 is not documented (only bad domain_hint is);
+characteristics[].span covers name+value ([22,33]) while corrections[].span covers only the value ([28,33]), which is not explained.
+scripts/load_test.py (50/50, 1 worker): 50/50 ok, p50 3.57 s, p95 4.92 s, max 4.95 s, 10.1 req/s — matches README (4.2/5.7 s, 8.7 req/s).
+RSS columns print null: psutil is optional and not in requirements, so README RSS numbers cannot be reproduced without `pip install psutil`.
