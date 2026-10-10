@@ -194,6 +194,69 @@ def _named_enum_values(best, text: str, used: set[str], domain, raw_heads: set[s
     return found
 
 
+# word-level synonyms of characteristic names (the KTRU / portal wording wins)
+_NAME_WORD_SYN = {"вес": "масса", "веса": "массы", "весом": "массой", "объём": "объем", "объёма": "объема",
+                  "расцветка": "цвет", "окраска": "цвет", "колер": "цвет", "габарит": "размер",
+                  "напряжения": "напряжения", "питания": "питания"}
+_HEADS_FIRST = ("цвет", "размер", "высот", "ширин", "глубин", "длин", "масс", "материал", "тип", "вид",
+                "мощност", "напряжен", "объем", "толщин", "диаметр", "количеств", "форм", "назначен")
+
+
+def uniform_name(name: str) -> str:
+    """One formulation for a property name: case, ё, synonyms, head word first («корпуса цвет» -> «Цвет корпуса»)."""
+    ws = [w for w in re.split(r"[\s_]+", (name or "").strip().lower().replace("ё", "е")) if w]
+    ws = [_NAME_WORD_SYN.get(w, w) for w in ws]
+    if len(ws) > 1 and not any(ws[0].startswith(h) for h in _HEADS_FIRST):
+        for i, w in enumerate(ws[1:], 1):
+            if any(w.startswith(h) for h in _HEADS_FIRST):
+                ws = [w] + ws[:i] + ws[i + 1:]
+                break
+    out = " ".join(ws).strip(" .,:;-")
+    return out[:1].upper() + out[1:] if out else (name or "")
+
+
+# dimensions that belong to specific item types (powered tools...); a mass or a length fits anything
+_SPECIFIC_DIMS = {"power", "voltage", "current", "charge", "rpm", "freq", "torque"}
+
+
+def _group_profile(cat: Catalog, best: KtruEntry) -> tuple[set[str], set[str]]:
+    """Dimensions and characteristic name stems used by KTRU positions of the chosen code's OKPD2 group."""
+    cache = cat.__dict__.setdefault("_group_profile", {})
+    key = best.okpd2 or best.code[:12]
+    if key not in cache:
+        dims: set[str] = set()
+        stems: set[str] = set()
+        for e in cat.entries:
+            if (e.okpd2 or e.code[:12]) != key:
+                continue
+            for sp in e.specs.values():
+                d = dimension(canon_unit(sp.unit)) or expected_dimension(sp.name)
+                if d:
+                    dims.add(d)
+                stems.update(_wstem(w) for w in norm(sp.name).split() if len(w) >= 4)
+        cache[key] = (dims, stems)
+    return cache[key]
+
+
+def suspicious_issue(cat: Catalog, best: KtruEntry | None, name: str, value: str, unit: str | None) -> Issue | None:
+    """«мощность гаечного ключа 100»: a quantity whose dimension no KTRU position of this item type has."""
+    if best is None or not value:
+        return None
+    dim = dimension(canon_unit(unit)) or expected_dimension(name)
+    if dim not in _SPECIFIC_DIMS:
+        return None
+    dims, stems = _group_profile(cat, best)
+    if dim in dims or any(_wstem(w) in stems for w in norm(name).split() if len(w) >= 4):
+        return None
+    shown = f"{value} {unit}".strip() if unit else value
+    return Issue.make(
+        "mismatch", field=uniform_name(name), value=shown, severity="warning",
+        expected="характеристика, применимая к «" + best.name + "»",
+        message=f"Характеристика не подходит к типу товара: «{uniform_name(name)} {shown}» "
+                f"не встречается у позиций КТРУ «{best.name}» — проверьте ввод",
+    )
+
+
 def _binary(sp) -> bool:
     vals = {norm(e) for e in sp.enums}
     return bool(vals) and vals <= {"да", "нет"}
@@ -239,6 +302,13 @@ def unify_characteristics(
         value = (item.value or "").strip()
         unit = canon_unit(item.unit) or item.unit
         spec = cat.find_spec(best, item.name) if best else None
+        if spec is None and best is not None:
+            # synonyms: «вес» and «масса» land on the same KTRU characteristic («Масса молотка»)
+            for alias in dict.fromkeys(filter(None, (CHAR_ALIASES.get(item.name.lower().strip()),
+                                                     uniform_name(item.name)))):
+                spec = cat.find_spec(best, alias)
+                if spec is not None:
+                    break
         if value and not unit and to_number(value) is not None and (
                 expected_dimension(spec.name if spec else item.name) == "length"
                 or (spec is not None and dimension(canon_unit(spec.unit)) == "length")):
@@ -277,6 +347,7 @@ def unify_characteristics(
             used.add(spec.name.lower())
         else:
             canon = CHAR_ALIASES.get(item.name.lower().strip())
+            sus = suspicious_issue(cat, best, item.name, value, unit)
             match = None
             if portal:
                 match = process.extractOne(canon or item.name, portal, scorer=fuzz.WRatio, score_cutoff=85)
@@ -292,14 +363,21 @@ def unify_characteristics(
                 pc.confidence = 0.8
                 pc.notes = "Унифицировано по словарю"
             else:
-                pc.name = pc.canonical_name = canonicalize_name(item.name)
+                pc.name = pc.canonical_name = uniform_name(canonicalize_name(item.name))
                 pc.source = CharSource.NEW
                 pc.confidence = 0.55
                 pc.notes = "Новое свойство (нет в КТРУ и выгрузках портала)"
-                issues.append(Issue.make(
-                    "new_property", field=pc.name, value=value, severity="warning",
-                    message=f"Характеристика «{item.name}» не найдена в КТРУ и выгрузках — заведена как новая",
-                ))
+                if sus is None:
+                    issues.append(Issue.make(
+                        "new_property", field=pc.name, value=value, severity="warning",
+                        message=f"Характеристика «{item.name}» не найдена в КТРУ и выгрузках — заведена как новая",
+                    ))
+            if sus is not None:
+                pc.suspicious = True
+                pc.confidence = min(pc.confidence, 0.3)
+                pc.notes = "Подозрительная характеристика: не подходит к типу товара"
+                sus.field = pc.name
+                issues.append(sus)
         if value:
             have = {(i.type, i.field) for i in issues}
             ktru_sized = spec is not None and (spec.enums or spec.ranges or spec.numbers)
@@ -351,9 +429,30 @@ def unify_characteristics(
                 suggestions=(sp.allowed_enums() or [])[:3],
                 message=f"Не заполнена обязательная характеристика КТРУ «{sp.name}»",
             ))
+    # optional KTRU characteristics of the chosen code that are not filled: listed too (allowed values, range)
+    if best:
+        for k, sp in best.specs.items():
+            if sp.required or k in used or any(c.name.lower() == k for c in out):
+                continue
+            lo, hi, nu = numeric_view(sp, domain) if is_numeric_spec(sp) else (None, None, canon_unit(sp.unit) or sp.unit)
+            out.append(ParsedCharacteristic(
+                name=sp.name, raw_name="", canonical_name=sp.name, value="",
+                unit=nu, source=CharSource.KTRU, required=False,
+                allowed=sp.allowed_enums(), min=lo, max=hi, confidence=0.0,
+                notes="Необязательная характеристика КТРУ — не заполнена",
+            ))
     # a text-parsed portal row whose value already went into a KTRU characteristic is a duplicate
     ktru_vals = {norm(c.value) for c in out if c.source == CharSource.KTRU and c.value}
     keep_user = {u.lower() for u in (user_rows or set())}
     out = [c for c in out if not (c.source != CharSource.KTRU and c.value and norm(c.value) in ktru_vals
                                   and (c.raw_name or c.name).lower() not in keep_user)]
-    return out, issues
+    return order_characteristics(out), issues
+
+
+_SOURCE_RANK = {CharSource.KTRU: 0, CharSource.PORTAL: 1, CharSource.NEW: 2, CharSource.USER: 2}
+
+
+def order_characteristics(chars: list[ParsedCharacteristic]) -> list[ParsedCharacteristic]:
+    """KTRU -> portal -> new (suspicious last); inside KTRU: filled, then empty required, then empty optional."""
+    return sorted(chars, key=lambda c: (_SOURCE_RANK.get(c.source, 2), c.suspicious,
+                                        0 if c.value else (1 if c.required else 2)))

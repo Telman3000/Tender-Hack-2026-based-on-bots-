@@ -28,7 +28,9 @@ def init_schema(conn: sqlite3.Connection) -> None:
             okei TEXT,
             required_json TEXT,
             chars_json TEXT,
-            name_norm TEXT
+            name_norm TEXT,
+            version INTEGER DEFAULT 0,
+            update_date TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_ktru_domain ON ktru(domain);
         CREATE INDEX IF NOT EXISTS idx_ktru_name ON ktru(name_norm);

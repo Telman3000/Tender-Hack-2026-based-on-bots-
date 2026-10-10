@@ -113,7 +113,7 @@ docker compose up --build      # http://127.0.0.1:8000/
 ## Проверка
 
 ```bash
-python -m pytest -q            # 62 passed (без catalog.db часть тестов пропускается)
+python -m pytest -q            # 101 passed (без catalog.db часть тестов пропускается)
 curl -s -X POST http://127.0.0.1:8000/api/analyze -H "Content-Type: application/json" \
      -d '{"text":"Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"}'
 python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и qa/summary.md
@@ -178,6 +178,19 @@ starlette.testclient is deprecated` — оно из FastAPI/Starlette TestClient
 (каждый воркер держит свою копию каталога, ~130 МБ). RSS считается через `psutil` (если установлен).
 
 QA (45 кейсов): верный код в топ-1 98%, в топ-3 100%.
+
+Пакетная проверка: `POST /api/analyze/batch` (JSON, до 500 строк) и `POST /api/analyze/csv`
+(CSV с одним столбцом наименований, UTF-8/cp1251, `;` или `,`, заголовок необязателен), оба умеют
+построчный поток NDJSON (`?stream=1`). 100 строк — ~4 с. Контракт — в [docs/api.md](docs/api.md#пакетная-обработка).
+
+```bash
+curl -s -X POST "http://127.0.0.1:8000/api/analyze/csv?stream=1" -F "file=@names.csv"
+```
+
+Индекс КТРУ: берутся только файлы `all_actual` (файлы `all_not-actual` пропускаются) и позиции со статусом
+не TERMINATED/INACTIVE; из нескольких версий одной позиции остаётся самая новая (`version`, затем
+`updateDate`), а полностью одинаковые позиции (то же наименование, ОКПД2 и характеристики) сводятся
+к одной, самой новой (при сборке — 361 такая позиция).
 
 ## Частые проблемы
 
