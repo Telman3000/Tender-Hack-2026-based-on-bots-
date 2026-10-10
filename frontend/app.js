@@ -11,7 +11,7 @@ const STATUS_LABELS = {
 };
 const STEP_LABELS = { initial: "Все коды", domain: "Категория", okpd2: "ОКПД2", name: "Наименование" };
 
-const state = { chars: [], data: null, seq: 0, timer: null, dirty: new Map(), textNote: false, origText: null };
+const state = { chars: [], data: null, seq: 0, timer: null, dirty: new Map(), textNote: false, origText: null, baseText: null, lastKey: null };
 const statusLabel = (st) => STATUS_LABELS[st] || (st ? "Статус: " + st : "");
 
 function escapeHtml(s) {
@@ -83,9 +83,10 @@ function schedule(withChars) {
   clearTimeout(state.timer);
   state.timer = setTimeout(() => analyze(withChars), DEBOUNCE_MS);
 }
-async function analyze(withChars) {
+async function analyze(withChars, fromButton) {
   const text = $("text").value.trim();
   if (!text) return;
+  if (!withChars) checkNewText(fromButton);
   const seq = ++state.seq;
   $("status").className = "status idle";
   $("status").textContent = "Проверяем…";
@@ -207,6 +208,14 @@ function funnelBlock(steps, candidates) {
 }
 
 function render(data) {
+  // сменился распознанный товар/домен/топ-код -> правки с именами, которых нет в новом ответе, отбрасываем
+  const key = [data.detected_domain || "", data.product_guess || "", data.best_ktru && data.best_ktru.code || ""].join("|");
+  if (state.lastKey !== null && key !== state.lastKey && state.dirty.size) {
+    const names = new Set((data.characteristics || []).map((c) => norm(c.name || "")));
+    for (const k of [...state.dirty.keys()]) if (!names.has(k)) state.dirty.delete(k);
+    if (!state.dirty.size) resetOverrides();
+  }
+  state.lastKey = key;
   state.data = data;
   state.chars = (data.characteristics || []).map(normChar);
   // повторно применяем правки пользователя из таблицы поверх ответа
@@ -282,7 +291,7 @@ function bind(otherIssues) {
   const reset = $("resetOv");
   if (reset) reset.addEventListener("click", () => {
     if (state.origText !== null) $("text").value = state.origText;
-    state.dirty.clear(); state.textNote = false; state.origText = null;
+    resetOverrides();
     clearTimeout(state.timer); analyze(false); // исходный текст, без characteristics
   });
   const add = $("addRow");
@@ -318,6 +327,38 @@ function bind(otherIssues) {
 // Берётся один раз и не обновляется, даже если потом пользователь сам печатал в textarea:
 // «Сбросить правки таблицы» всегда возвращает текст, каким он был до правок таблицы.
 // Снимок сбрасывается при сбросе правок, выборе демо-кейса и «Очистить».
+/* ---------- правило сброса правок таблицы ----------
+ * Правки таблицы (state.dirty + снимок state.origText) живут, только пока пользователь
+ * правит ТОТ ЖЕ текст. state.baseText — последний текст, который «наш»: результат синхронизации
+ * таблицы -> textarea либо текст последнего запроса с сохранёнными правками.
+ * Текст считается НОВЫМ, и правки сбрасываются, если:
+ *  1) нажата «Проверить» и текст отличается от baseText;
+ *  2) вставка (paste/drop) или замена содержимого textarea;
+ *  3) при наборе текст стал мало похож на baseText (сходство биграмм Dice < 0.6);
+ *  4) выбран демо-кейс или нажато «Очистить».
+ * Мелкая правка текста (сходство >= 0.6) правки сохраняет.
+ * Дополнительно: если в ответе сменился товар/домен/топ-код, правки с именами,
+ * которых нет среди характеристик нового ответа, отбрасываются (см. render). */
+const SIM_THRESHOLD = 0.6;
+function similarity(a, b) {
+  a = norm(a); b = norm(b);
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  const grams = (s) => { const m = new Map(); for (let i = 0; i < s.length - 1; i++) { const g = s.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
+  const A = grams(a), B = grams(b); let inter = 0;
+  for (const [g, n] of A) inter += Math.min(n, B.get(g) || 0);
+  return (2 * inter) / (a.length - 1 + b.length - 1);
+}
+function resetOverrides() {
+  state.dirty.clear(); state.textNote = false; state.origText = null; state.baseText = null;
+}
+function checkNewText(fromButton) {
+  if (!state.dirty.size) { state.baseText = null; return; }
+  const cur = $("text").value.trim();
+  const base = (state.baseText ?? "").trim();
+  if (fromButton ? cur !== base : similarity(cur, base) < SIM_THRESHOLD) resetOverrides();
+  else state.baseText = $("text").value; // мелкая правка того же текста -> правки остаются
+}
 function snapshotText() {
   if (state.origText === null && state.dirty.size === 0) state.origText = $("text").value;
 }
@@ -325,6 +366,7 @@ function markDirty(row) {
   if (!row.name.trim()) return;
   snapshotText();
   state.dirty.set(norm(row.name), { name: row.name, value: row.value, unit: row.unit, source: row.source });
+  state.baseText = $("text").value;
 }
 // Заменяет фрагмент user_input в textarea («высота 750 мм» -> «высота 900 мм»).
 // Программная запись в textarea не порождает событие input, поэтому лишнего пересчёта нет.
@@ -339,6 +381,7 @@ function syncText(row, k, prev, next) {
   const newFrag = frag.slice(0, pos) + next + frag.slice(pos + prev.length);
   ta.value = ta.value.slice(0, at) + newFrag + ta.value.slice(at + frag.length);
   row.user_input = newFrag;
+  state.baseText = ta.value;
 }
 function refreshNote() {
   const n = $("ovNote");
@@ -358,17 +401,21 @@ async function loadDemos() {
     b.type = "button";
     b.className = "chip";
     b.textContent = c.title;
-    b.onclick = () => { state.dirty.clear(); state.textNote = false; state.origText = null; $("text").value = c.text; $("domain").value = c.domain_hint || ""; analyze(false); };
+    b.onclick = () => { resetOverrides(); state.lastKey = null; $("text").value = c.text; $("domain").value = c.domain_hint || ""; analyze(false); };
     box.appendChild(b);
   });
 }
-$("run").onclick = () => { clearTimeout(state.timer); analyze(false); };
-$("text").addEventListener("input", () => schedule(false));
+$("run").onclick = () => { clearTimeout(state.timer); analyze(false, true); };
+$("text").addEventListener("input", (e) => {
+  const t = e && e.inputType || "";
+  if (t === "insertFromPaste" || t === "insertFromDrop" || t === "insertReplacementText") resetOverrides();
+  schedule(false);
+});
 $("domain").addEventListener("change", () => schedule(false));
 $("clear").onclick = () => {
   clearTimeout(state.timer); state.seq++;
   $("text").value = ""; $("domain").value = "";
-  state.data = null; state.chars = []; state.dirty.clear(); state.textNote = false; state.origText = null;
+  state.data = null; state.chars = []; resetOverrides(); state.lastKey = null;
   $("status").className = "status idle"; $("status").textContent = "Введите описание товара";
   $("result").className = "result empty"; $("result").textContent = "Здесь появится результат проверки";
 };
