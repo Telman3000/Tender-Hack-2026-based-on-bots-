@@ -63,6 +63,22 @@ def init_schema(conn: sqlite3.Connection) -> None:
             source TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS ktru_char_values (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL,
+            char_name TEXT NOT NULL,
+            required INTEGER DEFAULT 0,
+            kind TEXT,            -- enum | number | range | any
+            value TEXT,
+            vmin REAL,
+            vmax REAL,
+            min_op TEXT,
+            max_op TEXT,
+            unit TEXT,
+            okei_code TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_kcv_code ON ktru_char_values(code);
+
         CREATE TABLE IF NOT EXISTS meta (
             key TEXT PRIMARY KEY,
             value TEXT
