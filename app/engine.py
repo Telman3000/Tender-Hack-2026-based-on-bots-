@@ -63,10 +63,10 @@ class CatalogEngine:
                 next_steps=["Собрать индекс из материалов хакатона"],
             )
         text = translit_if_latin(req.text)
-        product, raw = parse_free_text(text)
+        domain = detect_domain(text, req.domain_hint)
+        product, raw = parse_free_text(text, domain)
         product = guess_product_name(text) or product
         raw, user_rows = self._merge(raw, req)
-        domain = detect_domain(text, req.domain_hint)
 
         filled = [r for r in raw if r.value]
         nr = narrow_ktru(self.catalog, product, filled, domain, domain_detected=domain is not None)
