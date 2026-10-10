@@ -11,7 +11,7 @@ const STATUS_LABELS = {
 };
 const STEP_LABELS = { initial: "Все коды", domain: "Категория", okpd2: "ОКПД2", name: "Наименование" };
 
-const state = { chars: [], data: null, seq: 0, timer: null, dirty: new Map(), textNote: false };
+const state = { chars: [], data: null, seq: 0, timer: null, dirty: new Map(), textNote: false, origText: null };
 const statusLabel = (st) => STATUS_LABELS[st] || (st ? "Статус: " + st : "");
 
 function escapeHtml(s) {
@@ -281,8 +281,9 @@ function bind(otherIssues) {
     el.addEventListener("click", () => { state.chars.splice(+el.dataset.del, 1); draw(); schedule(true); }));
   const reset = $("resetOv");
   if (reset) reset.addEventListener("click", () => {
-    state.dirty.clear(); state.textNote = false;
-    clearTimeout(state.timer); analyze(false);
+    if (state.origText !== null) $("text").value = state.origText;
+    state.dirty.clear(); state.textNote = false; state.origText = null;
+    clearTimeout(state.timer); analyze(false); // исходный текст, без characteristics
   });
   const add = $("addRow");
   if (add) add.addEventListener("click", () => {
@@ -313,13 +314,22 @@ function bind(otherIssues) {
 }
 
 /* ---------- table -> text sync ---------- */
+// Снимок textarea до первой правки таблицы (dirty: пусто -> не пусто).
+// Берётся один раз и не обновляется, даже если потом пользователь сам печатал в textarea:
+// «Сбросить правки таблицы» всегда возвращает текст, каким он был до правок таблицы.
+// Снимок сбрасывается при сбросе правок, выборе демо-кейса и «Очистить».
+function snapshotText() {
+  if (state.origText === null && state.dirty.size === 0) state.origText = $("text").value;
+}
 function markDirty(row) {
   if (!row.name.trim()) return;
+  snapshotText();
   state.dirty.set(norm(row.name), { name: row.name, value: row.value, unit: row.unit, source: row.source });
 }
 // Заменяет фрагмент user_input в textarea («высота 750 мм» -> «высота 900 мм»).
 // Программная запись в textarea не порождает событие input, поэтому лишнего пересчёта нет.
 function syncText(row, k, prev, next) {
+  snapshotText(); // до переписывания textarea
   const frag = row.user_input || "";
   const ta = $("text");
   if (!frag || !prev || prev === next) { if (frag && prev !== next && !prev) state.textNote = true; return; }
@@ -348,7 +358,7 @@ async function loadDemos() {
     b.type = "button";
     b.className = "chip";
     b.textContent = c.title;
-    b.onclick = () => { state.dirty.clear(); state.textNote = false; $("text").value = c.text; $("domain").value = c.domain_hint || ""; analyze(false); };
+    b.onclick = () => { state.dirty.clear(); state.textNote = false; state.origText = null; $("text").value = c.text; $("domain").value = c.domain_hint || ""; analyze(false); };
     box.appendChild(b);
   });
 }
@@ -358,7 +368,7 @@ $("domain").addEventListener("change", () => schedule(false));
 $("clear").onclick = () => {
   clearTimeout(state.timer); state.seq++;
   $("text").value = ""; $("domain").value = "";
-  state.data = null; state.chars = []; state.dirty.clear(); state.textNote = false;
+  state.data = null; state.chars = []; state.dirty.clear(); state.textNote = false; state.origText = null;
   $("status").className = "status idle"; $("status").textContent = "Введите описание товара";
   $("result").className = "result empty"; $("result").textContent = "Здесь появится результат проверки";
 };
