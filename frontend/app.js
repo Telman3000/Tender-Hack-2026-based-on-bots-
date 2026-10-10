@@ -164,7 +164,22 @@ function statusBadges(data, issues) {
   const cls = (v) => (v === "determined" || v === "complete" ? "good" : v === "not_found" || v === "invalid" ? "bad" : "mid");
   return `<div class="sbadges"><span class="sbadge ${cls(cs)}" id="codeBadge">Код: ${CODE_LABELS[cs]}</span>
     <span class="sbadge ${cls(card)}" id="cardBadge">Карточка: ${cardText}</span></div>
-    <div class="muted small" id="complLine">${comp.required_filled}/${comp.required_total} обязательных, ${comp.optional_filled}/${comp.optional_total} необязательных</div>`;
+    ${complLine(data, comp)}`;
+}
+// «0 из 0» не показываем никогда: у позиции КТРУ может не быть характеристик
+const NO_CHARS_TEXT = "У позиции КТРУ нет характеристик";
+const compTotal = (comp) => (comp.required_total || 0) + (comp.optional_total || 0);
+function noCharsText(data) {
+  const m = !isOutOfScope(data) && typeof data.message === "string" && data.message.trim() ? data.message.trim() : "";
+  return m || NO_CHARS_TEXT;
+}
+function complLine(data, comp) {
+  if (compTotal(comp) === 0) {
+    if (isOutOfScope(data) || !data.best_ktru) return "";
+    return `<div class="muted small" id="complLine">${escapeHtml(noCharsText(data))}</div>`;
+  }
+  const part = (f, t, w) => (t ? `${f}/${t} ${w}` : `${w} нет`);
+  return `<div class="muted small" id="complLine">${part(comp.required_filled, comp.required_total, "обязательных")}, ${part(comp.optional_filled, comp.optional_total, "необязательных")}</div>`;
 }
 function nextStepsBlock(data) {
   let items = Array.isArray(data.next_steps_detail) && data.next_steps_detail.length
@@ -297,11 +312,19 @@ function fillBlock(data, issues) {
     return `<div class="fill-item ${c.required ? "req" : "opt"}"><span class="fname">${escapeHtml(c.name)}</span>${c.required ? '<span class="req-tag">обязательная</span>' : ' <span class="muted">необязательная</span>'} ${badge(c.source)}${ctl}</div>`;
   };
   return `<div class="block fill" id="fillBlock"><div class="fill-head"><h2>Допишите ещё ${ordered.length} ${plural(ordered.length, "характеристику", "характеристики", "характеристик")}${nReq ? ` <span class="muted">(обязательных: ${nReq})</span>` : ""}</h2>
-    <span class="counter" id="fillCounter">${escapeHtml(fillText(data, filled, total))}</span></div>
+    ${(() => { const t = fillText(data, filled, total); return t ? `<span class="counter" id="fillCounter">${escapeHtml(t)}</span>` : ""; })()}</div>
     <div class="progress"><i style="width:${pct}%"></i></div>${ordered.map(row).join("")}</div>`;
 }
 function fillText(data, filled, total) {
   const f = data.fill;
+  const clean = (t) => t.replace(/\s*\(\s*обязательных\s+0\s*из\s*0\s*\)/i, "").trim();
+  const zero = (t) => /(^|\D)0\s*из\s*0(\D|$)/.test(clean(t));
+  if (f && typeof f === "object" && typeof f.text === "string" && !zero(f.text) && f.total !== 0) return clean(f.text) || null;
+  if (typeof f === "string" && f.trim() && !zero(f)) return clean(f);
+  if (f && typeof f === "object" && f.total === 0) return null;
+  if (typeof f === "string" && zero(f)) return null;
+  if (f && typeof f === "object" && typeof f.text === "string" && zero(f.text)) return null;
+  if (f == null && !total) return null;
   if (typeof f === "string" && f.trim()) return f.trim();
   if (f && typeof f === "object") {
     if (typeof f.text === "string" && f.text.trim()) return f.text.trim();
@@ -368,7 +391,8 @@ function charsTable(issues) {
 function issuesBlock(issues) {
   // обязательные, уже есть строкой в таблице (пусть и пустой), не дублируем чипом
   const missing = issues.filter((x) => x.type === "missing" && x.field && !state.chars.some((c) => norm(c.name) === norm(x.field)));
-  const other = issues.filter((x) => !(x.type === "missing" && x.field));
+  // out_of_scope уже показан отдельным блоком — в замечаниях не дублируем
+  const other = issues.filter((x) => !(x.type === "missing" && x.field) && x.type !== "out_of_scope");
   const missingInTable = issues.filter((x) => x.type === "missing" && x.field && !missing.includes(x)).length;
   const list = other
     .map((x, k) => `<div class="issue ${x.severity === "error" ? "error" : ""}">
