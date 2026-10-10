@@ -99,3 +99,29 @@ fields and types match; the example fragment matches exactly. Gaps: empty text -
 characteristics[].span covers name+value ([22,33]) while corrections[].span covers only the value ([28,33]), which is not explained.
 scripts/load_test.py (50/50, 1 worker): 50/50 ok, p50 3.57 s, p95 4.92 s, max 4.95 s, 10.1 req/s — matches README (4.2/5.7 s, 8.7 req/s).
 RSS columns print null: psutil is optional and not in requirements, so README RSS numbers cannot be reproduced without `pip install psutil`.
+
+
+# Acceptance feature/ui db881e8 on origin/main 0c9b8c7 + core d35047b (local merge feb1466, no conflicts) — 2026-10-10 13:04 MSK
+
+Real browser (headless Edge, Playwright), port 8810, screenshots in wt-qa/_out/ui-db881e8/. pytest 58 passed. JS console errors: none.
+- Highlighting: marks use issue spans (value only): «27 м» [30,34], «бетон» [43,48], with the error text as a tooltip. Characteristic spans cover name+value
+  («длина 27 м» [24,34]) and are not highlighted, which is correct. After typing «Новый » before the text the mark still sits on «27 м» (no drift).
+- «Было → стало»: TO42 «единицы · Длина разводного ключа: 27 м → 27000 мм»; wrench «27 см → 270 мм». FU19: no block (as docs say for core).
+- Badges «Код»/«Карточка» and the completeness line are correct in all demo states; optional steps are grey (rgb 138,148,166) with «(необязательно)».
+- Demo FU19 -> TO37 -> TO42 -> 270 without reload matches the updated demo_script.md, except: FU19 after editing shows «4/7 необязательных»
+  (two new optional rows appear; the script only mentions 4/5 before editing); TO42 «Исправьте «длина»: 27 мм» is shown as optional/grey (documented, but it is a
+  severity=error fix — UX bug in core next_steps_detail).
+- ui_accept: edit 750->900 recalculates, reset brings 750 back (table/text/result), not_found label ok. /static/favicon.svg 200 (direct /favicon.ico 404, no console error).
+- smoke: 10/10 API 200, UI queries render, edit updates text.
+
+Presentation check (presentation.pptx slide 6 = presentation_7min.pptx slide 8 unless noted), compared with d35047b numbers:
+- «Статус верный (отложенный) 43/45 · 96%» -> 40/45 (89%) on d35047b (43/45 was 0c9b8c7).
+- «Мебель / инструменты / одежда 15/15 · 15/15 · 13/15» sits under the status row but is top-1 by category; status by category on d35047b is 13 · 14 · 13.
+- «Ложные тревоги на чистых 1/42» -> 4/42 (3 genuine false: H04, H17, H27).
+- «p95 ~100–115 мс» -> 99–164 ms over the four d35047b runs.
+- «Чистая сборка индекса 71 с» -> last jury build 100 s (71 s was an older build).
+- «воронка N → M → 1» -> funnel ends with a group of 2–3 variations (demo FU19 355→2, TO37 1514→3→…→2).
+- 7min slide 9 «пойманы 19/30 … несуществующие 0/7» and plan item «ловить несуществующие значения — следующий шаг» -> 30/30 on d35047b (post-tuning, optimistic); feature is implemented.
+- Header «Цифры на текущей версии · main 0c9b8c7» -> true for 0c9b8c7 but outdated once core d35047b is merged.
+- Correct: top-1/top-3 dev 44/45, 45/45; holdout 43/45, 44/45; median ~50 ms; ≈600 ms debounce (DEBOUNCE_MS = 600); «355 → 2»; «27 м → 27 мм».
+- Not on slides: pytest 58, 3391 positions, load test 50 parallel p50 3.57 s.
