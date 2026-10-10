@@ -1,7 +1,6 @@
 """Stepwise narrowing of KTRU candidates: domain -> name -> OKPD2 group -> each characteristic."""
 from __future__ import annotations
 
-import re
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -9,11 +8,9 @@ import numpy as np
 from rapidfuzz import fuzz, process
 from rapidfuzz.distance import Levenshtein  # noqa: F401  (kept for typo helpers)
 
-from app import morph
 from app.catalog import Catalog, KtruEntry, norm, tokens
 from app.config import CHAR_ALIASES
-from app.models import Candidate, CharSource, Issue, KtruCandidate, NarrowingStep, ParsedCharacteristic
-from app.morph import STOP, flag_answer, known_word, same_lemma
+from app.models import Candidate, Issue, KtruCandidate, NarrowingStep
 from app.parser import RawKV
 from app.units import dimension, expected_dimension
 from app.validate import check_value
@@ -56,7 +53,6 @@ HEAD_SYNONYMS = {
 OK_MARGIN = 8.0
 MATERIAL_CONFLICTS = (("металл", "дерев"), ("дерев", "металл"), ("пластик", "металл"), ("пластик", "дерев"))
 PURPOSE_EXPANSIONS = {"документ": ("архивн", "картотечн", "документ"), "офисн": ("письменн",)}
-_CYRILLIC = re.compile(r"[а-я]+(?:-[а-я]+)*")
 
 
 def canonical_label(cnt: Counter, raw_name: str) -> str:
@@ -98,7 +94,6 @@ class NarrowResult:
     shown: list = field(default_factory=list)
     power_tool: bool = False
     margin: float = 999.0
-    flags: list[RawKV] = field(default_factory=list)
 
 
 def score_name(query: str, candidate: str) -> float:
@@ -112,7 +107,7 @@ def score_name(query: str, candidate: str) -> float:
 
 
 def _scores(query: str, names: list[str], toks: list[frozenset[str]]) -> np.ndarray:
-    qn = norm(query)[:200]
+    qn = norm(query)
     if not qn or not names:
         return np.zeros(len(names))
     ts = process.cdist([qn], names, scorer=fuzz.token_set_ratio, workers=1)[0]
@@ -134,17 +129,13 @@ def _scores(query: str, names: list[str], toks: list[frozenset[str]]) -> np.ndar
 def correct_query(cat: Catalog, query: str, domain: str | None) -> tuple[str, list[Issue]]:
     """Cheap typo fix: query words unknown to the domain vocabulary -> closest vocabulary word."""
     vocab = cat.vocab(domain)
-    freq = cat.word_freq()
     out, issues = [], []
     for w in query.split():
         nw = norm(w)
-        if len(nw) < 4 or nw in vocab or not _CYRILLIC.fullmatch(nw) or cat.known_form(nw, domain):
+        if len(nw) < 4 or nw in vocab or nw.isdigit() or cat.known_form(nw, domain):
             out.append(w)
             continue
         m = process.extractOne(nw, cat.vocab_list(domain), scorer=fuzz.ratio, score_cutoff=80)
-        if known_word(nw) or freq.get(nw, 0) >= 10:
-            out.append(m[0] if m and same_lemma(nw, m[0]) else w)
-            continue
         if m and m[0] != nw and m[0][:-2] != nw[:-2]:  # same stem, other ending = inflection, not a typo
             out.append(m[0])
             issues.append(Issue.make(
@@ -283,11 +274,10 @@ def narrow_ktru(
         top=[_cand(e, s) for s, e, _ in kept[:8]],
     ))
     cands = kept
-    res.flags = text_flags([e for _, e, _ in cands], raw, text)
 
     # Characteristics: drop codes where the value is impossible (never drop all)
     step_no = 4
-    for kv in raw + res.flags:
+    for kv in raw:
         exp_dim = expected_dimension(kv.name)
         if kv.unit and exp_dim and dimension(kv.unit) and dimension(kv.unit) != exp_dim:
             continue  # wrong unit: reported by validation, must not filter codes
@@ -309,17 +299,14 @@ def narrow_ktru(
                 bad_c.append(c)
         if not has_spec:
             continue
-        stated = f"«{kv.text}» → {kv.value}" if kv.text else f"«{kv.value}{' ' + kv.unit if kv.unit else ''}»"
         if bad_c and ok_c:
             cands = ok_c
-            reason = f"{stated} недопустимо для {len(bad_c)} кодов"
+            reason = f"«{kv.value}{' ' + kv.unit if kv.unit else ''}» недопустимо для {len(bad_c)} кодов"
         elif bad_c:
             reason = "Значение не подходит ни одному коду — коды не отсеяны, см. ошибки"
             bad_c = []
         else:
             reason = f"Характеристика есть у {has_spec} кодов, значение допустимо"
-            if kv.text:
-                reason = f"{stated}. {reason}"
         res.steps.append(NarrowingStep(
             step=step_no, label=canonical_label(label_cnt, kv.name), stage="char_filter", remaining=len(cands),
             removed=len(bad_c), reason=reason, removed_codes=[c[1].code for c in bad_c[:10]],
@@ -345,17 +332,16 @@ def narrow_ktru(
     final_note = "Конечный код выбран"
     if len(distinct_names) > 1:
         final_note = f"Конкурируют {len(group)} кодов — нужно уточнение"
-        names = list(dict.fromkeys(e.name for _, e in group))
         res.issues.append(Issue.make(
             "ambiguous",
-            f"Близких кодов КТРУ: {len(group)}, наименований: {len(names)} — выберите подходящее наименование",
-            value=product or None, suggestions=names, severity="warning",
+            f"Найдено {len(group)} близких кодов КТРУ — однозначно определить нельзя",
+            suggestions=["Добавьте отличительные характеристики из топ-кандидатов"], severity="warning",
         ))
     elif len(group) > 1:
         final_note = f"Группа вариаций «{res.best.name}»: {len(group)} кодов"
     # most discriminating characteristic among the group
     if len(group) > 1:
-        user = {kv.name.lower() for kv in raw + res.flags}
+        user = {kv.name.lower() for kv in raw}
         cnt: Counter[str] = Counter()
         vals: dict[str, set] = {}
         for _, e in group[:10]:
@@ -382,58 +368,6 @@ def narrow_ktru(
         top=[_cand(e, s) for s, e in shown], note=final_note,
     ))
     return res
-
-
-def text_flags(entries: list[KtruEntry], raw: list[RawKV], text: str | None) -> list[RawKV]:
-    ws = morph.words(text)
-    given = {kv.name.lower() for kv in raw}
-    seen: set[str] = set()
-    out: list[RawKV] = []
-    for e in entries:
-        for k, sp in e.specs.items():
-            if k in seen or k in given or not sp.is_flag:
-                continue
-            seen.add(k)
-            found = flag_answer(ws, sp.name)
-            if found:
-                out.append(RawKV(name=sp.name, value=found[0], text=" ".join(ws[i] for i in found[1])))
-    return out
-
-
-def variant_question(
-    cat: Catalog,
-    best: KtruEntry,
-    group: list[tuple[float, KtruEntry]],
-    chars: list[ParsedCharacteristic],
-    domain: str | None,
-) -> tuple[str, list[str], int] | None:
-    filled = {c.name.lower(): c for c in chars if c.value and c.source == CharSource.KTRU}
-    variants = []
-    for _, e in group:
-        if e.name != best.name:
-            continue
-        if all(e.specs.get(k) is None or check_value(e.specs[k], c.value, c.unit, domain, emit=False).ok
-               for k, c in filled.items()):
-            variants.append(e)
-    if len(variants) < 2:
-        return None
-    sets: dict[str, set[frozenset[str]]] = {}
-    for e in variants:
-        for k, sp in e.specs.items():
-            if k not in filled and sp.enums and sp.required:
-                sets.setdefault(k, set()).add(frozenset(sp.enums))
-    ranked = sorted(
-        (k for k, ss in sets.items() if len(ss) > 1),
-        key=lambda k: (-len(sets[k]), len(set().union(*sets[k])), k),
-    )
-    if not ranked:
-        return None
-    k = ranked[0]
-    freq = cat.word_freq()
-    values = list(dict.fromkeys(v for e in variants if k in e.specs for v in e.specs[k].enums))
-    values.sort(key=lambda v: -max((freq.get(w, 0) for w in morph.words(v) if w not in STOP), default=0))
-    name = next(e.specs[k].name for e in variants if k in e.specs)
-    return name, values, len(variants)
 
 
 def candidates_view(group: list[tuple[float, KtruEntry]]) -> list[Candidate]:

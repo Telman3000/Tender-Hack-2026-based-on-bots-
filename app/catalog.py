@@ -4,19 +4,9 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections import Counter
 from dataclasses import dataclass, field
 
 from rapidfuzz import fuzz, process
-
-from app.morph import STOP, inflection, same_stem
-from app.units import UNITS, canon_unit
-
-_BOUND = re.compile(r"\s+(?:до|от)$")
-_LETTERS = re.compile(r"[a-zа-я]+")
-_PACKAGE = ("упаков", "короб", "тара", "брутто", "транспорт")
-_SAME_NAME = {"масса": "вес", "вес": "масса"}
-MIN_SAMPLES = 15
 
 
 def norm(s: str) -> str:
@@ -44,10 +34,6 @@ class CharSpec:
     def is_numeric(self) -> bool:
         return bool(self.numbers or self.ranges)
 
-    @property
-    def is_flag(self) -> bool:
-        return bool(self.enums) and {norm(e) for e in self.enums} <= {"да", "нет"}
-
     def allowed_enums(self) -> list[str] | None:
         return list(dict.fromkeys(self.enums))[:50] if self.enums else None
 
@@ -73,27 +59,6 @@ class KtruEntry:
     def required(self) -> list[str]:
         return [s.name for s in self.specs.values() if s.required]
 
-    def material_specs(self) -> list[CharSpec]:
-        return [sp for k, sp in self.specs.items() if "материал" in k and sp.enums and not sp.is_flag]
-
-    def materials(self) -> CharSpec | None:
-        specs = self.material_specs()
-        if not specs:
-            return None
-        return CharSpec(name="Материал", enums=list(dict.fromkeys(v for sp in specs for v in sp.enums)))
-
-
-@dataclass
-class HeadSamples:
-    words: dict[str, set[int]] = field(default_factory=dict)
-    chars: dict[str, list[tuple[int, str, float, str]]] = field(default_factory=dict)
-    by_word: dict[str, set[int]] = field(default_factory=dict)
-
-    def rows_with(self, word: str) -> set[int]:
-        if word not in self.by_word:
-            self.by_word[word] = set().union(*(ids for w, ids in self.words.items() if same_stem(word, w)))
-        return self.by_word[word]
-
 
 class Catalog:
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -103,7 +68,6 @@ class Catalog:
         self.portal_names: dict[str | None, list[str]] = {}
         self.portal_freq: dict[tuple[str | None, str], int] = {}
         self.ste_names: dict[str | None, list[str]] = {}
-        self.ste_chars: dict[str, list[tuple[str, str]]] = {}
         self._load(conn)
 
     def _load(self, conn: sqlite3.Connection) -> None:
@@ -164,12 +128,9 @@ class Catalog:
         for (dom, name), _n in sorted(self.portal_freq.items(), key=lambda x: -x[1]):
             self.portal_names.setdefault(dom, []).append(name)
             self.portal_names.setdefault(None, []).append(name)
-        for r in conn.execute("SELECT domain, name_norm, chars_raw FROM portal_ste"):
+        for r in conn.execute("SELECT domain, name_norm FROM portal_ste"):
             if r["name_norm"]:
                 self.ste_names.setdefault(r["domain"], []).append(r["name_norm"])
-                if r["chars_raw"]:
-                    head = r["name_norm"].split()[0]
-                    self.ste_chars.setdefault(head, []).append((r["name_norm"], r["chars_raw"]))
 
     # -------- lookups --------
     def pool(self, domain: str | None) -> list[int]:
@@ -218,89 +179,6 @@ class Catalog:
                 v.update(n.split())
             cache[domain] = {w for w in v if len(w) >= 3}
         return cache[domain]
-
-    def head_samples(self, head: str) -> HeadSamples:
-        cache = self.__dict__.setdefault("_head_samples", {})
-        hs = cache.get(head)
-        if hs is None:
-            hs = HeadSamples()
-            rows = [it for h, items in self.ste_chars.items() if h == head or inflection(h, head) for it in items]
-            units: dict[str, str | None] = {}
-            names: dict[str, str] = {}
-            for i, (name, raw) in enumerate(rows):
-                for w in name.split():
-                    hs.words.setdefault(w, set()).add(i)
-                for part in raw.split("|"):
-                    rest, _, unit = part.strip().rpartition(" ")
-                    if unit not in units:
-                        cu = canon_unit(unit)
-                        units[unit] = cu if cu in UNITS else None
-                    cu = units[unit]
-                    if cu is None:
-                        continue
-                    label, _, num = rest.rpartition(" ")
-                    try:
-                        x = float(num.replace(",", "."))
-                    except ValueError:
-                        continue
-                    if x <= 0 or not label:
-                        continue
-                    if label not in names:
-                        names[label] = _BOUND.sub("", norm(label))
-                    dim, factor = UNITS[cu]
-                    hs.chars.setdefault(names[label], []).append((i, dim, x * factor, cu))
-            cache[head] = hs
-        return hs
-
-    def typical(self, query: list[str], name: str) -> tuple[float, float, str, int] | None:
-        if not query:
-            return None
-        key = norm(name)
-        cache = self.__dict__.setdefault("_typical", {})
-        if (tuple(query), key) in cache:
-            return cache[(tuple(query), key)]
-        hs = self.head_samples(query[0])
-        exact = {key, _SAME_NAME.get(key, key)}
-        stems = [w for w in key.split() if w not in STOP]
-        loose = [c for c in hs.chars if c not in exact and stems and len(c.split()) <= len(stems) + 1
-                 and not any(w.startswith(_PACKAGE) for w in c.split())
-                 and all(any(same_stem(s, w) for w in c.split()) for s in stems)]
-        result = None
-        hits = [hs.rows_with(q) for q in query[1:]]
-        for k in range(len(hits), -1, -1):
-            rows = set.intersection(*hits[:k]) if k else None
-            found = [s for c in exact for s in hs.chars.get(c, ()) if rows is None or s[0] in rows]
-            if len(found) < MIN_SAMPLES:
-                found += [s for c in loose for s in hs.chars[c] if rows is None or s[0] in rows]
-            if not found:
-                continue
-            dim = Counter(s[1] for s in found).most_common(1)[0][0]
-            xs = sorted(s[2] for s in found if s[1] == dim)
-            if len(xs) >= MIN_SAMPLES:
-                unit = Counter(s[3] for s in found if s[1] == dim).most_common(1)[0][0]
-                result = (xs[int(len(xs) * 0.05)], xs[max(0, int(len(xs) * 0.95) - 1)], unit, len(xs))
-                break
-        cache[(tuple(query), key)] = result
-        return result
-
-    def word_freq(self) -> Counter:
-        freq = self.__dict__.get("_freq")
-        if freq is None:
-            freq = Counter()
-            for e in self.entries:
-                freq.update(_LETTERS.findall(e.name_norm))
-                for sp in e.specs.values():
-                    freq.update(_LETTERS.findall(norm(sp.name)))
-                    for v in sp.enums:
-                        freq.update(_LETTERS.findall(norm(v)))
-            for (_dom, name), n in self.portal_freq.items():
-                for w in _LETTERS.findall(norm(name)):
-                    freq[w] += n
-            for names in self.ste_names.values():
-                for n in names:
-                    freq.update(_LETTERS.findall(n))
-            self._freq = freq
-        return freq
 
     def vocab_list(self, domain: str | None) -> list[str]:
         cache = self.__dict__.setdefault("_vocab_l", {})

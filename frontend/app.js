@@ -10,7 +10,6 @@ const STATUS_LABELS = {
   error: "Есть ошибки в характеристиках",
 };
 const STEP_LABELS = { initial: "Все коды", domain: "Категория", okpd2: "ОКПД2", name: "Наименование" };
-const DOMAIN_LABELS = { furniture: "Мебель", clothing: "Одежда", tools: "Инструменты" };
 
 const state = { chars: [], data: null, seq: 0, timer: null, dirty: new Map(), textNote: false, origText: null, baseText: null, lastKey: null };
 const statusLabel = (st) => STATUS_LABELS[st] || (st ? "Статус: " + st : "");
@@ -45,13 +44,12 @@ function normChar(c) {
 function normIssue(i) {
   let suggestions = Array.isArray(i.suggestions) ? i.suggestions : [];
   if (!suggestions.length && i.suggestion) suggestions = [i.suggestion];
-  const type = i.type || i.kind || "warning";
   return {
-    type,
+    type: i.type || i.kind || "warning",
     field: i.field ?? null,
     value: i.value ?? "",
     expected: i.expected ?? "",
-    suggestions: suggestions.slice(0, type === "ambiguous" ? 8 : 3).map(String),
+    suggestions: suggestions.slice(0, 3).map(String),
     message: i.message || "",
     severity: i.severity || ((i.type || i.kind) === "missing" ? "warning" : "error"),
   };
@@ -166,12 +164,8 @@ function issuesBlock(issues) {
   const missing = issues.filter((x) => x.type === "missing" && x.field && !state.chars.some((c) => norm(c.name) === norm(x.field)));
   const other = issues.filter((x) => !(x.type === "missing" && x.field));
   const missingInTable = issues.filter((x) => x.type === "missing" && x.field && !missing.includes(x)).length;
-  const typos = other.filter((x) => x.type === "typo" && x.value && x.suggestions.length);
-  const fixAll = typos.length > 1
-    ? `<div style="margin-bottom:10px"><button class="btn ghost small" id="fixTypos">Исправить опечатки в тексте (${typos.length})</button></div>`
-    : "";
   const list = other
-    .map((x, k) => `<div class="issue ${x.type} ${x.severity === "error" ? "error" : ""}">
+    .map((x, k) => `<div class="issue ${x.severity === "error" ? "error" : ""}">
       <div>${x.field ? `<b>${escapeHtml(x.field)}:</b> ` : ""}${escapeHtml(x.message)}</div>
       ${x.expected ? `<div class="exp">Ожидается: ${escapeHtml(x.expected)}</div>` : ""}
       ${x.suggestions.length ? `<div class="chips">${x.suggestions
@@ -186,7 +180,7 @@ function issuesBlock(issues) {
         .join("")}</div>`
     : "";
   const inTable = missingInTable ? `<div class="lbl">Заполните обязательные характеристики в таблице: ${missingInTable}</div>` : "";
-  return { html: fixAll + list + miss + inTable || `<div class="muted">Замечаний нет</div>`, other: other.filter((x) => !(x.type === "missing" && x.field)) };
+  return { html: list + miss + inTable || `<div class="muted">Замечаний нет</div>`, other: other.filter((x) => !(x.type === "missing" && x.field)) };
 }
 function funnelBlock(steps, candidates) {
   if (!steps.length) return `<div class="muted">Нет данных</div>`;
@@ -260,7 +254,7 @@ function draw() {
   $("result").className = "result";
   $("result").innerHTML = `
     <div class="block"><h2>Распознано${elapsed}</h2>
-      <div class="muted">Категория: <b>${escapeHtml(DOMAIN_LABELS[data.detected_domain] || data.detected_domain || "—")}</b> · Товар: <b>${escapeHtml(data.product_guess || "—")}</b></div></div>
+      <div class="muted">Категория: <b>${escapeHtml(data.detected_domain || "—")}</b> · Товар: <b>${escapeHtml(data.product_guess || "—")}</b></div></div>
     ${best}
     <div class="block"><h2>Характеристики</h2>${charsTable(issues)}${state.dirty.size ? `<div class="hint" id="ovNote">Изменено в таблице: ${state.dirty.size}${state.textNote ? " · правки таблицы имеют приоритет над текстом" : ""} <button class="btn ghost small" id="resetOv">Сбросить правки таблицы</button></div>` : ""}</div>
     <div class="block"><h2>Подсказки</h2>${ib.html}</div>
@@ -312,25 +306,12 @@ function bind(otherIssues) {
       const iss = otherIssues[+el.dataset.sug];
       const val = el.dataset.val;
       const row = iss.field ? state.chars.find((c) => norm(c.name) === norm(iss.field)) : null;
-      if (!row && !iss.field) {
-        if (!iss.value) return;
-        $("text").value = $("text").value.replace(iss.value, iss.type === "ambiguous" ? withName(iss.value, val) : val);
-        clearTimeout(state.timer); analyze(false);
-        return;
-      }
       if (row) { syncText(row, "value", String(row.value ?? ""), val); row.value = val; markDirty(row); }
-      else { state.chars.push(normChar({ name: iss.field, value: val, source: "ktru" })); markDirty(state.chars[state.chars.length - 1]); }
+      else if (iss.field) { state.chars.push(normChar({ name: iss.field, value: val, source: "ktru" })); markDirty(state.chars[state.chars.length - 1]); }
+      else if (iss.value) $("text").value = $("text").value.replace(iss.value, val);
       draw();
       schedule(true);
     }));
-  const fix = $("fixTypos");
-  if (fix) fix.addEventListener("click", () => {
-    let text = $("text").value;
-    otherIssues.filter((x) => x.type === "typo" && x.value && x.suggestions.length)
-      .forEach((x) => { text = text.replace(x.value, x.suggestions[0]); });
-    $("text").value = text;
-    clearTimeout(state.timer); analyze(false);
-  });
   root.querySelectorAll("[data-miss]").forEach((el) =>
     el.addEventListener("click", () => {
       if (state.chars.some((c) => norm(c.name) === norm(el.dataset.miss))) return;
@@ -339,12 +320,6 @@ function bind(otherIssues) {
       const v = root.querySelectorAll('[data-k="value"]');
       if (v.length) v[v.length - 1].focus();
     }));
-}
-
-function withName(phrase, name) {
-  const stem = (w) => norm(w).replaceAll("ё", "е").slice(0, 5);
-  const have = new Set(name.split(/\s+/).map(stem));
-  return [name, ...phrase.split(/\s+/).filter((w) => w && !have.has(stem(w)))].join(" ");
 }
 
 /* ---------- table -> text sync ---------- */
