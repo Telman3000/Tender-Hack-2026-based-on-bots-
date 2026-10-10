@@ -1,4 +1,4 @@
-﻿"""Smoke test of a running server: API + UI.
+"""Smoke test of a running server: API + UI.
 Usage: python qa/smoke.py --base http://127.0.0.1:8000 --out ../qa_smoke
 UI part needs `pip install playwright`; uses bundled Chromium, else system Edge/Chrome.
 """
@@ -74,6 +74,19 @@ def ui(base, outdir):
             rep[f"q{n}"] = {"text": text, "status": pg.inner_text("#status")[:120],
                             "char_rows": r.locator("tr").count(), "badges": r.locator(".badge").count(),
                             "funnel": r.locator(".funnel").count()}
+        # edit a characteristic value -> must trigger recalculation; description text should follow
+        reqs = []
+        pg.on("request", lambda r: "/api/analyze" in r.url and reqs.append(r.post_data))
+        pg.fill("#text", "Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"); pg.click("#run"); pg.wait_for_timeout(2500)
+        before_res, n0 = pg.inner_text("#result"), len(reqs)
+        v = pg.locator('#result [data-k="value"]').first
+        old = v.input_value(); v.fill("900"); v.press("Tab"); pg.wait_for_timeout(3000)
+        s = outdir / "05_after_edit.png"; pg.screenshot(path=str(s), full_page=True); rep["shots"].append(str(s))
+        txt = pg.input_value("#text"); res_txt = pg.inner_text("#result")
+        rep["edit"] = {"old_value": old, "new_value": "900", "recalc_requests": len(reqs) - n0,
+                       "result_changed": before_res != res_txt, "textarea_after": txt,
+                       "textarea_updated": "900" in txt, "result_still_has_750": "750" in res_txt,
+                       "last_request": (reqs[-1] or "")[:300] if reqs else None}
         b.close()
     return rep
 
