@@ -3,45 +3,43 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>СТЕ · Автозаполнение характеристик — Tender Hack 2026</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet" />
+  <title>Помощник заполнения характеристик — Портал поставщиков</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <div class="bg"></div>
   <header class="top">
-    <div class="brand">
-      <span class="mark">ПП</span>
-      <div>
-        <div class="brand-name">Портал поставщиков</div>
-        <div class="brand-sub">Автозаполнение ключевых характеристик в СТЕ</div>
+    <div class="top-inner">
+      <div class="brand">
+        <span class="mark">ПП</span>
+        <div>
+          <div class="brand-name">Портал поставщиков</div>
+          <div class="brand-sub">Помощник заполнения характеристик и подбора КТРУ</div>
+        </div>
       </div>
+      <div class="meta">Tender Hack 2026</div>
     </div>
-    <div class="meta">Tender Hack 2026 · Казань</div>
   </header>
 
   <main class="layout">
-    <section class="panel input-panel">
+    <section class="card input-panel">
       <h1>Описание товара</h1>
-      <p class="lead">Введите название и характеристики одной строкой — система разберёт, унифицирует и подберёт код КТРУ.</p>
+      <p class="lead">Введите описание в свободной форме — сервис выделит характеристики, проверит их по КТРУ и сузит список кодов. Таблицу можно редактировать: результат пересчитается автоматически.</p>
 
       <label class="lbl" for="text">Текст</label>
-      <textarea id="text" rows="5" placeholder="Стол офисный ДСП высота 750 мм ширина 1200 мм цвет серый"></textarea>
+      <textarea id="text" rows="5" placeholder="Например: стол офисный, ширина 1200 мм, глубина 750 мм, материал ЛДСП"></textarea>
 
       <div class="row">
-        <label class="lbl" for="domain">Домен (опционально)</label>
+        <label class="lbl" for="domain">Категория (необязательно)</label>
         <select id="domain">
-          <option value="">авто</option>
-          <option value="furniture">мебель</option>
-          <option value="clothing">одежда</option>
-          <option value="tools">инструменты</option>
+          <option value="">Авто</option>
+          <option value="furniture">Мебель</option>
+          <option value="clothing">Одежда</option>
+          <option value="tools">Инструменты</option>
         </select>
       </div>
 
       <div class="actions">
-        <button id="run" class="btn primary">Разобрать</button>
+        <button id="run" class="btn primary">Проверить</button>
         <button id="clear" class="btn ghost">Очистить</button>
       </div>
 
@@ -51,15 +49,13 @@
       </div>
     </section>
 
-    <section class="panel result-panel">
-      <div id="status" class="status idle">Ожидание ввода</div>
-      <div id="result" class="result empty">Результат появится здесь</div>
+    <section class="result-panel">
+      <div id="status" class="status idle">Введите описание товара</div>
+      <div id="result" class="result empty">Здесь появится результат проверки</div>
     </section>
   </main>
 
-  <footer class="foot">
-    Приоритет характеристик: <b>КТРУ</b> → выгрузки портала → новое свойство · без внешних проприетарных LLM
-  </footer>
+  <footer class="foot">Источники характеристик: <span class="badge ktru">КТРУ</span> <span class="badge portal">Портал</span> <span class="badge new">Новая</span></footer>
 
   <script src="/static/app.js"></script>
 </body>
