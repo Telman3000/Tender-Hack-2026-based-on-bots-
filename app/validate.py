@@ -1,6 +1,8 @@
 """Value validation against KTRU: allowed lists, numeric ranges, units (OKEI)."""
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 
 from rapidfuzz import fuzz, process
@@ -10,12 +12,33 @@ from app.models import Issue
 from app.units import canon_unit, convert, dimension, expected_dimension, fmt, guess_unit, to_number
 
 # common-sense upper bounds when KTRU gives no range: domain -> dim -> (unit, max, label)
+# domain -> dimension -> (unit, max, what[, min]); min applies to main dimensions only
 _LIMITS = {
-    "furniture": {"length": ("м", 5, "мебели"), "mass": ("кг", 500, "мебели")},
-    "tools": {"length": ("м", 3, "ручного инструмента"), "mass": ("кг", 100, "инструмента"),
-              "voltage": ("В", 1000, "инструмента"), "power": ("Вт", 10000, "инструмента")},
-    "clothing": {"length": ("м", 3, "одежды"), "mass": ("кг", 20, "одежды")},
+    "furniture": {"length": ("м", 5, "мебели", 0.1), "mass": ("кг", 500, "мебели", 0.1)},
+    "tools": {"length": ("м", 3, "ручного инструмента", 0.01), "mass": ("кг", 100, "инструмента", 0.005),
+              "voltage": ("В", 1000, "инструмента", 1), "power": ("Вт", 10000, "инструмента", 1)},
+    "clothing": {"length": ("м", 3, "одежды"), "mass": ("кг", 20, "одежды", 0.005)},
 }
+_MAIN_DIMS = {"высота", "ширина", "глубина", "длина", "габаритная высота", "габаритная ширина",
+              "габаритная глубина", "габаритная длина"}
+# item type (word stems in the description) -> typical size range; first match wins
+_SIZE_RANGES = (
+    (("перчат", "рукавиц", "краг"), 5, 13, "размера перчаток"),
+    (("шапк", "кепк", "берет", "бейсболк", "панам", "каск", "шлем", "головн"), 46, 66, "размера головного убора"),
+    (("обув", "ботин", "сапог", "туфл", "кроссов", "кед", "тапоч", "сандал", "галош"), 15, 50, "размера обуви"),
+)
+
+
+def size_range(text: str, domain: str | None) -> tuple[float, float, str] | None:
+    words = re.findall(r"[а-яё]+", (text or "").lower())
+    for stems, lo, hi, what in _SIZE_RANGES:
+        if any(w.startswith(st) for w in words for st in stems):
+            return lo, hi, what
+    if domain == "clothing":
+        return 18, 80, "российского размера одежды"
+    return None
+
+
 _DIM_HINT = {"length": ["мм", "см"], "mass": ["кг", "г"], "volume": ["л", "мл"], "power": ["Вт"]}
 
 
@@ -125,7 +148,7 @@ def check_value(
                 converted,
             )
         issue = None
-        if guessed and emit:
+        if guessed and emit and u:
             issue = Issue.make(
                 "unit", field=field, value=value, expected=target,
                 message=f"«{field}»: единица не указана — принято {value} {u}"
@@ -163,7 +186,7 @@ def check_value(
     return CheckResult(True, value, unit)
 
 
-def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -> list[Issue]:
+def sanity_issues(name: str, value: str, unit: str | None, domain: str | None, text: str = "") -> list[Issue]:
     """Common-sense checks when KTRU has no constraint (furniture/tool sizes)."""
     out: list[Issue] = []
     num = to_number(value)
@@ -185,18 +208,32 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -
     if num <= 0 and any(k in low for k in ("высот", "ширин", "глубин", "длин", "масс", "вес", "мощност")):
         out.append(Issue.make("mismatch", field=name, value=value, expected="> 0",
                               message=f"«{name}» должно быть положительным", severity="error"))
-    if domain == "clothing" and not u:
-        for stem, lo, hi, what in (("размер", 18, 80, "российского размера одежды"), ("рост", 50, 220, "роста, см")):
-            if low.startswith(stem) and not lo <= num <= hi:
+    if not u and low.startswith("размер"):
+        rng = size_range(text, domain)
+        if rng:
+            lo, hi, what = rng
+            nums = [to_number(x) for x in re.split(r"[-–/]", value)]
+            if any(n is not None and not lo <= n <= hi for n in nums):
                 out.append(Issue.make(
                     "mismatch", field=name, value=value, expected=f"{lo}–{hi}",
                     message=f"«{name}» = {value} вне типичного диапазона {what} ({lo}–{hi})",
                     severity="error"))
+    if domain == "clothing" and not u and low.startswith("рост") and not 50 <= num <= 220:
+        out.append(Issue.make(
+            "mismatch", field=name, value=value, expected="50–220",
+            message=f"«{name}» = {value} вне типичного диапазона роста, см (50–220)", severity="error"))
     limits = _LIMITS.get(domain or "", {})
     dim = dimension(u) if u else None
     if dim in limits:
-        base_u, hi, what = limits[dim]
+        base_u, hi, what = limits[dim][:3]
+        lo = limits[dim][3] if len(limits[dim]) > 3 else None
         conv = convert(num, u, base_u)
+        main_dim = dim != "length" or low.strip() in _MAIN_DIMS
+        if conv is not None and lo is not None and main_dim and 0 < conv < lo:
+            out.append(Issue.make(
+                "mismatch", field=name, value=f"{value} {u}", expected=f"от {fmt(lo)} {base_u}",
+                message=f"«{name}» = {value} {u} нереалистично мало для {what} (меньше {fmt(lo)} {base_u})",
+                suggestions=[f"{value} {x}" for x in _DIM_HINT.get(dim, []) if x != u][:2], severity="error"))
         if conv is not None and conv > hi:
             out.append(Issue.make(
                 "mismatch", field=name, value=f"{value} {u}", expected=f"до {fmt(hi)} {base_u}",

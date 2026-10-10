@@ -113,7 +113,7 @@ docker compose up --build      # http://127.0.0.1:8000/
 ## Проверка
 
 ```bash
-python -m pytest -q            # 43 passed (без catalog.db часть тестов пропускается)
+python -m pytest -q            # 58 passed (без catalog.db часть тестов пропускается)
 curl -s -X POST http://127.0.0.1:8000/api/analyze -H "Content-Type: application/json" \
      -d '{"text":"Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"}'
 python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и qa/summary.md

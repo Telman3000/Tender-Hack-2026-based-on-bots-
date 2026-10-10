@@ -60,6 +60,80 @@ def _stems_for_spec(spec_key: str, text: str, windows: dict[str, list[str]]) -> 
     return _text_stems(" ".join(w for w in norm(text).split() if w not in foreign))
 
 
+_NAME_HEADS = ("цвет", "размер", "рост", "высот", "ширин", "глубин", "длин", "масс", "вес", "материал",
+               "тип", "вид", "мощност", "напряжен", "обивк", "каркас", "столешниц", "конфигурац", "форм")
+
+
+def _wstem(w: str) -> str:
+    return w[:5] if len(w) > 5 else w
+
+
+def _named_enum_values(best, text: str, used: set[str], domain, raw_heads: set[str] = frozenset()):
+    """Find «name value» for enum KTRU characteristics (full name, or a unique leading part of it)."""
+    tw = norm(text).split()
+    if not tw:
+        return []
+    specs = [(k, sp) for k, sp in best.specs.items()
+             if sp.enums and k not in used and not _binary(sp)]
+    names = {k: [w for w in norm(sp.name).split()] for k, sp in specs}
+    found = []
+    taken: set[int] = set()
+    for k, sp in sorted(specs, key=lambda x: -len(names[x[0]])):
+        nw = names[k]
+        for L in range(len(nw), 0, -1):
+            pref = nw[:L]
+            if len(pref[0]) < 3:
+                break
+            if L < len(nw):
+                # a shortened name only when the dropped words just repeat the product («Тип [молотка]»)
+                prod = {_wstem(w) for w in norm(best.name).split()}
+                if any(_wstem(w) not in prod for w in nw[L:] if w not in _STOP) or \
+                        sum(1 for k2 in names if names[k2][:L] == pref) > 1:
+                    continue
+            if _wstem(pref[0]) in raw_heads:
+                break
+            hit = None
+            for i in range(len(tw) - L):
+                if all(_wstem(tw[i + j]) == _wstem(pref[j]) for j in range(L)) and i not in taken:
+                    hit = i
+                    break
+            if hit is None:
+                continue
+            vals = []
+            for w in tw[hit + L:hit + L + 3]:
+                if any(ch.isdigit() for ch in w) or any(w.startswith(h) for h in _NAME_HEADS) or w in _STOP:
+                    break
+                vals.append(w)
+            if not vals:
+                break
+            taken.update(range(hit, hit + L + len(vals)))
+            raw_val = " ".join(vals)
+            r = check_value(sp, raw_val, None, domain)
+            if not r.ok:
+                rest = " ".join(tw[hit + L:hit + L + 12])
+                # multi-word allowed value («Защита от общих производственных загрязнений»)
+                alt = next((e for e in sp.enums if norm(e) and f" {norm(e)} " in f" {rest} "
+                            and len(norm(e).split()) >= 2), None)
+                if alt is not None:
+                    r = check_value(sp, alt, None, domain)
+            span_txt = " ".join(tw[hit:hit + L + len(vals)])
+            pc = ParsedCharacteristic(
+                name=sp.name, raw_name=" ".join(tw[hit:hit + L]), canonical_name=sp.name,
+                value=r.value if r.ok else raw_val, unit=None, source=CharSource.KTRU,
+                required=sp.required, allowed=sp.allowed_enums(), user_input=span_txt,
+                confidence=0.9 if r.ok else 0.5,
+                notes=f"Характеристика КТРУ {best.code}",
+            )
+            found.append((pc, r.issue))
+            break
+    return found
+
+
+def _binary(sp) -> bool:
+    vals = {norm(e) for e in sp.enums}
+    return bool(vals) and vals <= {"да", "нет"}
+
+
 def _enum_from_text(spec, stems: dict[str, str]) -> tuple[str, str] | None:
     """Pick the allowed KTRU value whose significant words occur in the description."""
     best, best_sc, tie = None, 0.0, False
@@ -162,10 +236,22 @@ def unify_characteristics(
                 ))
         if value:
             have = {(i.type, i.field) for i in issues}
-            for i in sanity_issues(item.name, value, item.unit, domain):
+            ktru_sized = spec is not None and (spec.enums or spec.ranges or spec.numbers)
+            for i in sanity_issues(item.name, value, item.unit, domain, text):
+                if ktru_sized and item.name.lower().startswith("размер"):
+                    continue  # KTRU allowed values win over the common-sense size table
                 if (i.type, i.field) not in have and not (spec and spec.is_numeric and i.type == "unit"):
                     issues.append(i)
         out.append(pc)
+
+    # «<KTRU characteristic name> <value>» in free text: never drop the value silently
+    if best:
+        raw_heads = {_wstem(norm(r.name).split()[0]) for r in raw if norm(r.name)}
+        for pc, issue in _named_enum_values(best, text, used, domain, raw_heads):
+            out.append(pc)
+            used.add(pc.name.lower())
+            if issue:
+                issues.append(issue)
 
     # required KTRU characteristics not provided
     if best:

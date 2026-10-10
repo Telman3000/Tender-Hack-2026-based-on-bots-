@@ -263,3 +263,57 @@ def test_correction_serializes_from():
     d = Correction(kind="unit", from_="27 см", to="270 мм").model_dump(by_alias=True)
     assert d["from"] == "27 см"
 
+
+def _issues(text):
+    return CatalogEngine().analyze(AnalyzeRequest(text=text))
+
+
+@needs_db
+@pytest.mark.parametrize("text,value", [
+    ("Стул офисный вид материала сиденья пластилин", "пластилин"),
+    ("Ключ гаечный тип исполнения квадратный блин", "квадратный блин"),
+    ("Молоток тип ювелирный", "ювелирный"),
+])
+def test_named_value_not_allowed_is_error(text, value):
+    r = _issues(text)
+    bad = [i for i in r.issues if i.type == "not_allowed"]
+    assert bad and bad[0].severity == "error" and 1 <= len(bad[0].suggestions) <= 3
+    assert any(c.value == value for c in r.characteristics)  # never dropped
+    assert r.card_status == "invalid"
+
+
+@needs_db
+@pytest.mark.parametrize("text,bad", [
+    ("Перчатки рабочие размер 25", True), ("Перчатки рабочие размер 9", False),
+    ("Стол письменный ширина 5 мм", True), ("Молоток масса 1 г", True),
+    ("Стол письменный ширина 1200 мм", False),
+])
+def test_size_and_lower_limits(text, bad):
+    r = _issues(text)
+    assert any(i.severity == "error" for i in r.issues) == bad, [i.message for i in r.issues]
+
+
+def test_size_range_table():
+    from app.validate import size_range
+    assert size_range("Перчатки трикотажные", "clothing")[:2] == (5, 13)
+    assert size_range("Сапоги резиновые", "clothing")[:2] == (15, 50)
+    assert size_range("Футболка мужская", "clothing")[:2] == (18, 80)
+
+
+@needs_db
+@pytest.mark.parametrize("text,frm,to", [
+    ("Молотак слесарный", "Молотак", "молоток"),
+    ("Перчаттки рабочие", "Перчаттки", "перчатки"),
+    ("Куртка утепленая мужская", "утепленая", "утепленная"),
+])
+def test_typo_corrections(text, frm, to):
+    r = _issues(text)
+    assert any(c.kind == "typo" and c.from_ == frm and c.to == to for c in r.corrections), r.corrections
+
+
+@needs_db
+@pytest.mark.parametrize("text", ["Стол офисный ЛДСП высота 750 мм", "Куртка зимняя мужская размер 50",
+                                  "Шуруповерт аккумуляторный 18 В"])
+def test_no_false_typos(text):
+    assert not any(i.type == "typo" for i in _issues(text).issues)
+

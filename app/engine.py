@@ -47,7 +47,7 @@ def _corrections(orig: str, text: str, issues, conv) -> list[Correction]:
         out.append(Correction(field="Наименование", kind="translit", from_=orig, to=text, span=[0, len(orig)]))
     for i in issues:
         if i.type == "typo" and i.value and i.expected and i.value != orig:
-            kind = "typo" if i.field == "Наименование" else "autofix"
+            kind = "typo" if i.field in ("Наименование", "Описание") else "autofix"
             out.append(Correction(field=i.field, kind=kind, from_=i.value, to=i.expected, span=_find(orig, i.value)))
         elif i.type == "unit" and i.severity == "warning" and i.value and i.suggestions:
             out.append(Correction(field=i.field, kind="unit", from_=i.value, to=i.suggestions[0],
