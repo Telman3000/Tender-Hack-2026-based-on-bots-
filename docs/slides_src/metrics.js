@@ -24,5 +24,18 @@ module.exports = {
   autotests: '62/62',
   ktruItems: '3391',
   loadParallel: '50',
-  funnelOutput: 'на выходе группа из 2–3 вариаций'
+  funnelOutput: 'на выходе группа из 2–3 вариаций',
+  // Финальная предзащита (presentation_final.pptx). Источник: qa/metrics_slide.md на origin/feature/qa
+  final: {
+    source: 'qa/metrics_slide.md (main 7aa9939)',
+    falseAlarmsStrict: '1/42',
+    softWarnings: '3/42',
+    latencyHeadline: '< 0,1 с',
+    p50Range: '50–100 мс',
+    p50: { main: '53–98 мс', heldOut: '49–60 мс' },     // 2 прогона
+    p95: { main: '126–194 мс', heldOut: '102–138 мс' },
+    breakIt: { passed: '28/32', pct: '88%', note: '0 ответов 500, 0 ошибок JS' },
+    howFunnel: '1514 → 3',                                 // TO42, инструменты
+    batch: { rows: 11, time: '≈1 с', determined: 8, ambiguous: 2, notFound: 1, complete: 4, incomplete: 6, withErrors: 1 } // docs/demo_batch.csv
+  }
 };

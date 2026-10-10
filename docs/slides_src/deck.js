@@ -1,20 +1,22 @@
 /* Refill of family "corporate_business_overview" (KISE Business) — same grid, helpers and geometry,
    rethemed to Moscow Supplier Portal colours. Builds deck A (7 slides) and deck B (10 slides). */
 const path = require('path');
+const fs = require('fs');
 const PptxGenJS = require('pptxgenjs');
-const SRC = path.join(__dirname, '..', 'src');
+const DOCS = path.join(__dirname, '..');
+const SRC = fs.existsSync(path.join(DOCS, 'src', 'process.png')) ? path.join(DOCS, 'src') : DOCS;
 const M = require('./metrics.js');
 
-const BLUE = '264B82';     // dark portal blue
-const BRIGHT = '1E88E5';   // bright accent blue
-const LIGHTB = '5AA9F0';   // thin rules
-const PALE = 'EAF2FC';
-const GRAYBG = 'F1F3F6';
-const WHITE = 'FFFFFF';
-const INK = '1F2A3C';
-const GRAY = '4A5568';
-const MUTED = '718096';
-const FONT = 'Inter';
+let BLUE = '264B82';     // dark portal blue
+let BRIGHT = '1E88E5';   // bright accent blue
+let LIGHTB = '5AA9F0';   // thin rules
+let PALE = 'EAF2FC';
+let GRAYBG = 'F1F3F6';
+let WHITE = 'FFFFFF';
+let INK = '1F2A3C';
+let GRAY = '4A5568';
+let MUTED = '718096';
+let FONT = 'Inter';
 
 const TEXT_BASE = { margin: 0, valign: 'top', isTextBox: true };
 function text(s, c, b, o) { s.addText(c, Object.assign({ x: b[0], y: b[1], w: b[2], h: b[3] }, TEXT_BASE, o)); }
@@ -33,8 +35,10 @@ function bullets(s, items, b, o) {
   body(s, items.map(function (t, i) { return { text: t, options: { breakLine: i < items.length - 1, bullet: { indent: 16 }, paraSpaceBefore: 6 } }; }), b, o);
 }
 
+let PAGE_BG = null;
 function chrome(s, n, total, o) {
   o = o || {};
+  if (PAGE_BG) s.background = { color: PAGE_BG };
   [[0, 0], [0.0624, 0.0624], [0.1249, 0], [0, 0.1249], [0.1249, 0.1249]].forEach(function (d) { rect(s, [0.3581 + d[0], 0.303 + d[1], 0.0624, 0.0624], BLUE); });
   text(s, 'Tender Hack 2026', [0.6116, 0.29, 2.6, 0.22], { fontFace: FONT, fontSize: 13, bold: true, color: BLUE });
   text(s, 'Помощник заполнения характеристик СТЕ', [7.3, 0.29, 5.675, 0.22], { fontFace: FONT, fontSize: 11, color: MUTED, align: 'right' });
@@ -258,7 +262,7 @@ function sTeam(p, n, t) {
   const s = p.addSlide();
   chrome(s, n, t);
   headline(s, 'Команда и роли', [1.3, 1.3, 5.0, 0.6]);
-  body(s, 'Процесс с дорожками — на BPMN; приёмка изменений — через PR.', [7.0, 1.4, 5.0, 0.5], { fontSize: 13, color: MUTED });
+  body(s, PAGE_BG ? 'Дальше — живое демо: чистый кейс, ошибка, неполное описание и пакет CSV.' : 'Процесс с дорожками — на BPMN; приёмка изменений — через PR.', [7.0, 1.4, 5.0, 0.5], { fontSize: 13, color: MUTED });
   const roles = [['Координация и интеграция', 'Приёмка и интеграция через PR'], ['Ядро КТРУ', 'Разбор, унификация, сужение кодов'],
     ['Интерфейс и защита', 'UI в стиле портала, BPMN, документация, презентация'], ['Тестирование и качество', 'Тест-кейсы и метрики QA']];
   roles.forEach(function (r, i) {
@@ -273,6 +277,169 @@ function sTeam(p, n, t) {
   return s;
 }
 
+/* ------------------------------------------------ final pre-defense deck (Figma UI-kit tokens) */
+const F = M.final;
+function setFinalTheme() {
+  BLUE = '264B82'; BRIGHT = 'DB2B21'; LIGHTB = 'C5D3E6'; PALE = 'F9E3E1'; GRAYBG = 'FFFFFF'; WHITE = 'FFFFFF';
+  INK = '1A1A1A'; GRAY = '1A1A1A'; MUTED = '5B6676'; PAGE_BG = 'E7EEF7';
+  FONT = fs.existsSync('/usr/share/fonts') && require('child_process').execSync('fc-list : family').toString().indexOf('Open Sans') >= 0 ? 'Open Sans' : 'Inter';
+}
+const BADGE = { ktru: '264B82', portal: '1F8A8A', fresh: 'F07D1A' };
+function pill(s, label, b, fill, o) {
+  roundRect(s, b, fill, { adj: 0.5 });
+  text(s, label, b, Object.assign({ fontFace: FONT, fontSize: 11, bold: true, color: WHITE, align: 'center', valign: 'middle' }, o));
+}
+function card(s, b) { roundRect(s, b, WHITE, { adj: 0.04, line: { color: 'D3DDEB', width: 0.75 } }); }
+function label(s, t, b, o) { text(s, t, b, Object.assign({ fontFace: FONT, fontSize: 13, bold: true, color: BLUE }, o)); }
+
+function fCover(p, n, t) {
+  const s = p.addSlide();
+  chrome(s, n, t, { railR: false });
+  headline(s, 'Помощник\nзаполнения\nхарактеристик СТЕ', [1.24, 1.3, 6.1, 2.4], { fontSize: 38 });
+  text(s, 'Свободный текст → код КТРУ → проверенная карточка', [1.24, 3.75, 6.0, 0.7], { fontFace: FONT, fontSize: 16, bold: true, color: BRIGHT });
+  body(s, 'Поставщик описывает товар одной строкой, а для СТЕ нужен код КТРУ и обязательные характеристики. Код КТРУ — это группа товаров: подобрать её и заполнить поля вручную сложно.',
+    [1.24, 4.55, 5.7, 1.15], { fontSize: 14 });
+  body(s, 'Итог: карточки отклоняются, позиции дублируются, цены сложно сравнивать.', [1.24, 5.8, 5.7, 0.6], { fontSize: 13.5, bold: true });
+  card(s, [7.55, 1.45, 4.95, 4.95]);
+  label(s, 'Типичные ошибки в карточке', [7.85, 1.7, 4.4, 0.3]);
+  [['Опечатки', 'в названиях и значениях'], ['Единицы', 'неверные или несовместимые'],
+   ['Вне списка', 'значения не из допустимых КТРУ'], ['Пропуски', 'обязательных характеристик']].forEach(function (c, i) {
+    const x = 7.85 + (i % 2) * 2.25, y = 2.2 + Math.floor(i / 2) * 2.0;
+    roundRect(s, [x, y, 2.1, 1.8], PAGE_BG, { adj: 0.08 });
+    headline(s, c[0], [x + 0.1, y + 0.38, 1.9, 0.4], { fontSize: 19, color: BRIGHT, align: 'center' });
+    body(s, c[1], [x + 0.12, y + 0.9, 1.86, 0.7], { fontSize: 12.5, align: 'center' });
+  });
+  return s;
+}
+
+function fHow(p, n, t) {
+  const s = p.addSlide();
+  chrome(s, n, t);
+  headline(s, 'Как работает: текст → код КТРУ → проверенная карточка', [0.85, 1.0, 11.6, 0.6], { fontSize: 26 });
+  const steps = [
+    ['01', 'Ввод', '«Ключ гаечный 170х190 мм длина 27 м» — и кнопка «Проверить»'],
+    ['02', 'Код КТРУ', 'Воронка ' + F.howFunnel + ': домен, наименование, ОКПД2, характеристики — с причиной на каждом шаге'],
+    ['03', 'Карточка', 'Таблица с бейджами источника, подсказки и «было → стало»: «27 м» подсвечено, варианты 27 мм / 27 см']];
+  steps.forEach(function (st, i) {
+    const y = 1.9 + i * 1.62;
+    card(s, [0.85, y, 4.95, 1.45]);
+    headline(s, st[0], [1.05, y + 0.2, 0.75, 0.5], { fontSize: 28, color: BRIGHT });
+    heading(s, st[1], [1.85, y + 0.2, 3.8, 0.3], { color: BLUE });
+    body(s, st[2], [1.85, y + 0.55, 3.8, 0.85], { fontSize: 12.5 });
+  });
+  card(s, [6.05, 1.9, 6.43, 4.69]);
+  const iw = 6.23, ih = iw * 2428 / 1440;
+  s.addImage({ path: path.join(SRC, 'screens', 'main_result.png'), x: 6.15, y: 2.0, w: iw, h: ih, sizing: { type: 'crop', x: 0, y: 0, w: iw, h: 4.49 } });
+  return s;
+}
+
+function fDiff(p, n, t) {
+  const s = p.addSlide();
+  chrome(s, n, t);
+  headline(s, 'Чем мы отличаемся', [0.85, 1.0, 11.6, 0.6]);
+  body(s, 'Пять свойств, которые видны в каждом ответе сервиса', [0.85, 1.62, 11.6, 0.35], { fontSize: 15, color: MUTED });
+  const c = [
+    ['Без нейросетей', 'Правила и справочник КТРУ: детерминированно, ничего не выдумывает'],
+    ['Полностью офлайн', 'SQLite-индекс и FastAPI на одной машине — без интернета и внешних API'],
+    ['Ответ ' + F.latencyHeadline, 'Медиана ' + F.p50Range + ' на запрос; пакет из ' + F.batch.rows + ' строк — ' + F.batch.time],
+    ['Объяснимость', 'Бейдж источника у каждой характеристики, причина на каждом шаге воронки, подсказки «было → стало»'],
+    ['КТРУ → портал → NEW', 'Сначала спецификация кода КТРУ, затем характеристики портала; новая — только на модерацию']];
+  c.forEach(function (d, i) {
+    const x = 0.85 + i * 2.36, y = 2.25, w = 2.17, h = 3.65;
+    card(s, [x, y, w, h]);
+    rect(s, [x + 0.2, y + 0.25, 0.5, 0.06], BRIGHT);
+    headline(s, '0' + (i + 1), [x + 0.2, y + 0.45, 1.0, 0.55], { fontSize: 30, color: BRIGHT });
+    heading(s, d[0], [x + 0.2, y + 1.15, w - 0.35, 0.65], { fontSize: 15, color: BLUE });
+    body(s, d[1], [x + 0.2, y + 1.85, w - 0.32, 1.7], { fontSize: 12 });
+  });
+  roundRect(s, [0.85, 6.12, 11.63, 0.52], BLUE, { adj: 0.3 });
+  text(s, 'ТЗ запрещает облачные LLM API — а нашей задаче они и не нужны: это сопоставление с закрытым справочником.', [1.05, 6.12, 11.23, 0.52],
+    { fontFace: FONT, fontSize: 13, bold: true, color: WHITE, valign: 'middle', align: 'center' });
+  return s;
+}
+
+function fArch(p, n, t) {
+  const s = p.addSlide();
+  chrome(s, n, t);
+  headline(s, 'Процесс и архитектура: один локальный конвейер', [0.85, 1.0, 11.6, 0.6], { fontSize: 26 });
+  const cols = [
+    { x: 0.85, title: 'Процесс (BPMN): «правка → пересчёт» до подтверждения', img: 'process.png', ar: 630 / 1720,
+      items: ['Дорожки: Пользователь / Сервис / Данные', 'Исходник docs/process.bpmn — Camunda Modeler, bpmn.io'] },
+    { x: 6.78, title: 'Компоненты: parser → unifier → matcher → engine', img: 'components.png', ar: 640 / 1300,
+      items: ['SQLite-индекс собирается заранее из XML КТРУ и XLSX портала', 'POST /api/analyze — ответ без внешних сервисов'] }];
+  cols.forEach(function (c) {
+    card(s, [c.x, 1.85, 5.7, 4.75]);
+    label(s, c.title, [c.x + 0.2, 2.0, 5.3, 0.3]);
+    const w = 5.3, h = w * c.ar, top = 2.45, area = 2.75;
+    s.addImage({ path: path.join(SRC, c.img), x: c.x + 0.2, y: top + (area - h) / 2, w: w, h: h });
+    body(s, c.items.map(function (t) { return '•  ' + t; }).join('\n'), [c.x + 0.2, 5.4, 5.3, 1.0], { fontSize: 12.5, paraSpaceBefore: 4 });
+  });
+  return s;
+}
+
+function fFill(p, n, t) {
+  const s = p.addSlide();
+  chrome(s, n, t);
+  headline(s, 'Дописать в один клик — и проверить пачкой из CSV', [0.85, 1.0, 11.6, 0.6], { fontSize: 26 });
+  card(s, [0.85, 1.85, 5.75, 1.5]);
+  label(s, 'Приоритет источников характеристик', [1.05, 1.97, 5.3, 0.3]);
+  [['КТРУ', BADGE.ktru, 'спецификация кода'], ['Портал', BADGE.portal, 'карточки портала'], ['Новая', BADGE.fresh, 'на модерацию']].forEach(function (b, i) {
+    const x = 1.05 + i * 1.85;
+    pill(s, b[0], [x, 2.42, 1.35, 0.34], b[1], { fontSize: 12 });
+    body(s, b[2], [x - 0.1, 2.85, 1.55, 0.3], { fontSize: 11.5, align: 'center', color: MUTED });
+    if (i < 2) text(s, '→', [x + 1.35, 2.36, 0.5, 0.4], { fontFace: FONT, fontSize: 20, bold: true, color: BRIGHT, align: 'center' });
+  });
+  card(s, [0.85, 3.55, 5.75, 3.05]);
+  label(s, 'Блок «Допишите»: допустимые значения КТРУ — чипы', [1.05, 3.67, 5.3, 0.3]);
+  const fh = 2.38, fw = fh * 832 / 461;
+  s.addImage({ path: path.join(SRC, 'screens', 'fill_block.png'), x: 0.85 + (5.75 - fw) / 2, y: 4.07, w: fw, h: fh });
+  card(s, [6.83, 1.85, 5.65, 4.75]);
+  label(s, 'Пакетная проверка (CSV): ' + F.batch.rows + ' строк ≈ ' + F.batch.time.replace('≈', '').trim(), [7.03, 1.97, 5.3, 0.3]);
+  const bw = 5.25, bh = bw * 1357 / 1440;
+  s.addImage({ path: path.join(SRC, 'screens', 'batch_view.png'), x: 7.03, y: 2.4, w: bw, h: bh, sizing: { type: 'crop', x: 0, y: bw * 330 / 1440, w: bw, h: 3.05 } });
+  const b = F.batch;
+  body(s, [{ text: 'Код: ', options: { bold: true } }, { text: b.determined + ' определён · ' + b.ambiguous + ' неоднозначно · ' + b.notFound + ' не найден', options: { breakLine: true } },
+    { text: 'Карточка: ', options: { bold: true } }, { text: b.complete + ' заполнена · ' + b.incomplete + ' неполная · ' + b.withErrors + ' с ошибками', options: { breakLine: true } },
+    { text: 'Щелчок по строке — открыть в редакторе; выгрузка в CSV', options: { color: MUTED } }], [7.03, 5.55, 5.3, 0.95], { fontSize: 12 });
+  return s;
+}
+
+function fMetrics(p, n, t) {
+  const s = p.addSlide();
+  chrome(s, n, t);
+  headline(s, 'Код КТРУ первым: ' + M.main.top1 + ', на новых позициях — ' + M.heldOut.top1, [0.85, 1.0, 11.6, 0.6], { fontSize: 24 });
+  body(s, 'Эталоны зафиксированы до прогона · два набора по ' + M.main.cases + ' позиций · источник: ' + F.source, [0.85, 1.6, 11.6, 0.35], { fontSize: 13, color: MUTED });
+  const ie = M.injectedErrors;
+  const tiles = [
+    [M.main.top1 + ' · ' + M.heldOut.top1, 'Код на 1-м месте', 'основной / отложенный: ' + M.main.top1Pct + ' / ' + M.heldOut.top1Pct],
+    [M.main.top3 + ' · ' + M.heldOut.top3, 'Код в топ-3', 'основной / отложенный: ' + M.main.top3Pct + ' / ' + M.heldOut.top3Pct],
+    [F.falseAlarmsStrict, 'Ложные тревоги (строго)', 'H31 — в карточке реальная ошибка: лобзик 2,1 г'],
+    [ie.caught + '*', 'Внесённые ошибки пойманы', 'единицы ' + ie.units + ', числа ' + ie.unrealistic + ', несуществующие ' + ie.nonExistent + ', опечатки ' + ie.typos],
+    [F.latencyHeadline, 'Время ответа, p50', 'основной ' + F.p50.main + ', отложенный ' + F.p50.heldOut],
+    [F.breakIt.passed, '«Сломай решение»', F.breakIt.pct + ': ' + F.breakIt.note]];
+  tiles.forEach(function (c, i) {
+    const x = 0.85 + (i % 3) * 3.94, y = 2.2 + Math.floor(i / 3) * 2.12, w = 3.75, h = 1.95;
+    card(s, [x, y, w, h]);
+    headline(s, c[0], [x + 0.25, y + 0.22, w - 0.5, 0.6], { fontSize: 30, color: BRIGHT });
+    heading(s, c[1], [x + 0.25, y + 0.92, w - 0.5, 0.3], { fontSize: 14, color: BLUE });
+    body(s, c[2], [x + 0.25, y + 1.27, w - 0.5, 0.6], { fontSize: 12 });
+  });
+  body(s, '* ' + M.injectedCaveat.replace('набор известен разработчикам — оценка оптимистичная', 'оценка оптимистичная, набор известен разработчикам') + '. Статус верный: ' + M.main.status + ' и ' + M.heldOutStatus + '; мягкие предупреждения на чистых — ' + F.softWarnings + '.',
+    [0.85, 6.5, 11.6, 0.3], { fontSize: 11.5, color: MUTED });
+  return s;
+}
+
+function buildFinal() {
+  setFinalTheme();
+  const p = new PptxGenJS();
+  p.defineLayout({ name: 'W', width: 13.333333, height: 7.5 }); p.layout = 'W';
+  p.title = 'Помощник заполнения характеристик СТЕ — предзащита, Tender Hack 2026';
+  p.theme = { headFontFace: FONT, bodyFontFace: FONT };
+  const order = [['cover', fCover], ['how', fHow], ['diff', fDiff], ['arch', fArch], ['fill', fFill], ['metrics', fMetrics], ['team', sTeam]];
+  order.forEach(function (o, i) { const s = o[1](p, i + 1, order.length); s.addNotes(NOTES.final[o[0]]); });
+  return p.writeFile({ fileName: path.join(DOCS, 'presentation_final.pptx') });
+}
+
 const NOTES = require('./notes.js');
 function build(variant) {
   const p = new PptxGenJS();
@@ -285,4 +452,5 @@ function build(variant) {
   order.forEach(function (o, i) { const s = o[1](p, i + 1, order.length); s.addNotes(NOTES[variant][o[0]] || NOTES.common[o[0]]); });
   return p.writeFile({ fileName: path.join(__dirname, variant === 'A' ? 'presentation.pptx' : 'presentation_7min.pptx') });
 }
-build('A').then(function () { return build('B'); }).then(function () { console.log('ok'); });
+if (process.argv[2] === 'final') buildFinal().then(function () { console.log('ok final'); });
+else build('A').then(function () { return build('B'); }).then(function () { console.log('ok'); });
