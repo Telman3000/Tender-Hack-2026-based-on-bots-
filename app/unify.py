@@ -1,156 +1,102 @@
+"""Characteristic unification: KTRU (of the chosen code) -> portal frequency -> new property."""
 from __future__ import annotations
-
-import re
-import sqlite3
 
 from rapidfuzz import fuzz, process
 
+from app.catalog import Catalog, KtruEntry
 from app.config import CHAR_ALIASES
 from app.models import CharSource, Issue, ParsedCharacteristic
-from app.parser import RawKV, canonicalize_name, canonicalize_unit
-
-
-def _load_portal_char_names(conn: sqlite3.Connection, domain: str | None) -> list[str]:
-    if domain:
-        rows = conn.execute(
-            "SELECT DISTINCT char_name FROM portal_chars WHERE domain=? AND char_name IS NOT NULL",
-            (domain,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT DISTINCT char_name FROM portal_chars WHERE char_name IS NOT NULL"
-        ).fetchall()
-    return [r["char_name"] for r in rows if r["char_name"]]
-
-
-def _load_ktru_char_names(conn: sqlite3.Connection, codes: list[str] | None = None) -> dict[str, str]:
-    """Return alias->canonical from required chars of candidate codes."""
-    mapping: dict[str, str] = {}
-    if not codes:
-        return mapping
-    qmarks = ",".join("?" * len(codes))
-    rows = conn.execute(
-        f"SELECT required_json, chars_json FROM ktru WHERE code IN ({qmarks})",
-        codes,
-    ).fetchall()
-    import json
-
-    for row in rows:
-        for blob in (row["required_json"], row["chars_json"]):
-            if not blob:
-                continue
-            try:
-                items = json.loads(blob)
-            except Exception:
-                continue
-            for it in items:
-                name = it if isinstance(it, str) else it.get("name")
-                if name:
-                    mapping[name.lower()] = name
-    return mapping
+from app.parser import RawKV, canonicalize_name
+from app.units import canon_unit
+from app.validate import check_value, sanity_issues
 
 
 def unify_characteristics(
-    conn: sqlite3.Connection,
+    cat: Catalog,
     raw: list[RawKV],
     domain: str | None,
-    candidate_codes: list[str] | None = None,
+    best: KtruEntry | None,
+    user_rows: set[str] | None = None,
 ) -> tuple[list[ParsedCharacteristic], list[Issue]]:
-    portal_names = _load_portal_char_names(conn, domain)
-    ktru_map = _load_ktru_char_names(conn, candidate_codes)
     issues: list[Issue] = []
     out: list[ParsedCharacteristic] = []
+    portal = cat.portal_names.get(domain) or cat.portal_names.get(None) or []
+    used: set[str] = set()
 
     for item in raw:
-        canon = canonicalize_name(item.name)
-        unit = canonicalize_unit(item.unit)
-        source = CharSource.USER
-        notes = None
-        confidence = 0.7
-
-        # 1) КТРУ эталон
-        if canon.lower() in ktru_map:
-            canon = ktru_map[canon.lower()]
-            source = CharSource.KTRU
-            confidence = 0.95
-            notes = "Сопоставлено со справочником КТРУ"
-        elif item.name.lower() in CHAR_ALIASES:
-            canon = CHAR_ALIASES[item.name.lower()]
-            # still try portal
-            source = CharSource.PORTAL
-            confidence = 0.85
-            notes = "Унифицировано по словарю алиасов"
-        elif portal_names:
-            match = process.extractOne(
-                canon,
-                portal_names,
-                scorer=fuzz.WRatio,
-                score_cutoff=80,
-            )
-            if match:
-                canon = match[0]
-                source = CharSource.PORTAL
-                confidence = match[1] / 100.0
-                notes = f"Сопоставлено с характеристикой портала (score={match[1]})"
-            else:
-                source = CharSource.NEW
-                confidence = 0.55
-                notes = "Новое свойство (нет в КТРУ/портале) — сохранено как пользовательское"
-                issues.append(
-                    Issue(
-                        kind="new_property",
-                        message=f"Характеристика «{item.name}» не найдена в КТРУ и выгрузках — заведена как новая",
-                        field=canon,
-                        suggestion="Проверьте формулировку; при повторении используйте единое имя",
-                    )
-                )
-
-        # Unit / value sanity
-        value = item.value
-        if unit in {"мм", "см", "м"} and re.fullmatch(r"\d+(?:\.\d+)?", value or ""):
-            num = float(value)
-            # absurd height for furniture in meters typed as meters when meant cm
-            if unit == "м" and canon.lower() in {"высота", "ширина", "глубина", "длина"} and num > 5:
-                issues.append(
-                    Issue(
-                        kind="unit",
-                        message=f"Подозрительное значение {value} {unit} для «{canon}»",
-                        field=canon,
-                        suggestion="Возможно, имелись в виду см или мм",
-                    )
-                )
-            if unit == "мм" and canon.lower() == "высота" and num > 5000:
-                issues.append(
-                    Issue(
-                        kind="mismatch",
-                        message=f"Высота {value} мм выглядит нереалистично для мебели/инструмента",
-                        field=canon,
-                        suggestion="Проверьте единицу измерения и значение",
-                    )
-                )
-
-        # RAM-like absurd example from briefing
-        if "оператив" in canon.lower() or "память" in item.name.lower():
-            if re.search(r"\b2\b", value) and "гб" in (value + (unit or "")).lower():
-                issues.append(
-                    Issue(
-                        kind="mismatch",
-                        message="2 ГБ оперативной памяти для современного ноутбука — подозрительно мало",
-                        field=canon,
-                        suggestion="Уточните объём ОЗУ",
-                    )
-                )
-
-        out.append(
-            ParsedCharacteristic(
-                raw_name=item.name,
-                canonical_name=canon,
-                value=value,
-                unit=unit,
-                source=source,
-                confidence=confidence,
-                notes=notes,
-            )
+        user_input = f"{item.name} {item.value}{' ' + item.unit if item.unit else ''}".strip()
+        value = (item.value or "").strip()
+        unit = canon_unit(item.unit) or item.unit
+        spec = cat.find_spec(best, item.name) if best else None
+        pc = ParsedCharacteristic(
+            name=item.name, raw_name=item.name, canonical_name=item.name,
+            value=value, unit=unit, user_input=user_input,
         )
+        if spec is not None:
+            pc.name = pc.canonical_name = spec.name
+            pc.source = CharSource.KTRU
+            pc.required = spec.required
+            pc.allowed = spec.allowed_enums()
+            pc.min, pc.max = spec.bounds() if spec.is_numeric else (None, None)
+            pc.confidence = 0.95
+            pc.notes = f"Характеристика КТРУ {best.code}"
+            if spec.is_numeric and spec.unit:
+                pc.unit = canon_unit(spec.unit) or spec.unit
+            if value:
+                r = check_value(spec, value, item.unit, domain)
+                if r.issue:
+                    issues.append(r.issue)
+                if r.ok:
+                    pc.value, pc.unit = r.value, (r.unit or pc.unit)
+            used.add(spec.name.lower())
+        else:
+            canon = CHAR_ALIASES.get(item.name.lower().strip())
+            match = None
+            if portal:
+                match = process.extractOne(canon or item.name, portal, scorer=fuzz.WRatio, score_cutoff=85)
+            if match:
+                pc.name = pc.canonical_name = match[0]
+                pc.source = CharSource.PORTAL
+                pc.confidence = match[1] / 100.0
+                n = cat.portal_freq.get((domain, match[0]), 0)
+                pc.notes = f"Характеристика портала (встречается в {n} категориях)"
+            elif canon:
+                pc.name = pc.canonical_name = canon
+                pc.source = CharSource.PORTAL
+                pc.confidence = 0.8
+                pc.notes = "Унифицировано по словарю"
+            else:
+                pc.name = pc.canonical_name = canonicalize_name(item.name)
+                pc.source = CharSource.NEW
+                pc.confidence = 0.55
+                pc.notes = "Новое свойство (нет в КТРУ и выгрузках портала)"
+                issues.append(Issue.make(
+                    "new_property", field=pc.name, value=value, severity="warning",
+                    message=f"Характеристика «{item.name}» не найдена в КТРУ и выгрузках — заведена как новая",
+                ))
+        if value:
+            have = {(i.type, i.field) for i in issues}
+            for i in sanity_issues(pc.name, value, item.unit, domain):
+                if (i.type, i.field) not in have and not (spec and spec.is_numeric and i.type == "unit"):
+                    issues.append(i)
+        out.append(pc)
 
+    # required KTRU characteristics not provided
+    if best:
+        for k, sp in best.specs.items():
+            if not sp.required or k in used:
+                continue
+            lo, hi = sp.bounds() if sp.is_numeric else (None, None)
+            out.append(ParsedCharacteristic(
+                name=sp.name, raw_name="", canonical_name=sp.name, value="",
+                unit=canon_unit(sp.unit) or sp.unit, source=CharSource.KTRU, required=True,
+                allowed=sp.allowed_enums(), min=lo, max=hi, confidence=0.0,
+                notes="Обязательная характеристика КТРУ — не заполнена",
+            ))
+            issues.append(Issue.make(
+                "missing", field=sp.name, severity="warning",
+                expected=", ".join((sp.allowed_enums() or [])[:5]) or None,
+                suggestions=(sp.allowed_enums() or [])[:3],
+                message=f"Не заполнена обязательная характеристика КТРУ «{sp.name}»",
+            ))
     return out, issues
