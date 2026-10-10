@@ -178,3 +178,12 @@ class Catalog:
         if domain not in cache:
             cache[domain] = sorted(self.vocab(domain))
         return cache[domain]
+
+    def okpd_for(self, pool: list[int]):
+        import numpy as np
+
+        cache = self.__dict__.setdefault("_okpd", {})
+        key = id(pool)
+        if key not in cache:
+            cache[key] = np.array([self.entries[i].okpd2 or "" for i in pool], dtype=str)
+        return cache[key]

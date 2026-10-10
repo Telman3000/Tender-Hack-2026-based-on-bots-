@@ -19,6 +19,38 @@ NAME_MIN = 35.0
 NAME_BAND = 25.0
 GROUP_BAND = 12.0
 
+# Power tools (ОКПД2 28.24) vs hand tools (25.7x)
+POWER_STEMS = ("аккумулятор", "электр", "отбойн", "пневмат", "сетев", "беспровод", "бесщеточ",
+               "бесщёточ", "ударн", "перфорат", "гайковерт", "гайковёрт", "болгарк", "лобзик")
+POWER_UNITS = {"Вт", "кВт", "В", "А·ч", "мА·ч", "об/мин"}
+# hand-tool head noun -> name of the matching power-tool KTRU position
+POWER_SYNONYMS = {
+    "отвертк": "шуруповерт",
+    "отвёртк": "шуруповерт",
+    "гайковерт": "шуруповерт",
+    "молоток": "инструменты ручные электрические",
+    "перфоратор": "инструменты ручные электрические",
+    "болгарк": "шлифмашина",
+    "пила": "электролобзик пила",
+}
+
+
+# Workwear: "рабочий", "для уборщиц" -> спецодежда 14.12 / спецобувь 15.20.3
+WORK_STEMS = ("рабоч", "спец", "уборщ", "производствен", "защитн", "сигнальн", "охран", "строител")
+# qualifiers in KTRU names that must be backed by the query ("из кожи", "детская", "с верхом из меха")
+QUALIFIER_STEMS = ("кож", "мех", "детск", "женск", "мужск")
+
+
+def work_signal(query: str) -> bool:
+    return any(w.startswith(st) for w in norm(query).split() for st in WORK_STEMS)
+
+
+def power_signal(query: str, raw: list[RawKV]) -> bool:
+    ws = norm(query).split()
+    if any(w.startswith(st) for w in ws for st in POWER_STEMS):
+        return True
+    return any(kv.unit in POWER_UNITS for kv in raw)
+
 
 @dataclass
 class NarrowResult:
@@ -29,6 +61,7 @@ class NarrowResult:
     next_steps: list[str] = field(default_factory=list)
     query: str = ""
     shown: list = field(default_factory=list)
+    power_tool: bool = False
 
 
 def score_name(query: str, candidate: str) -> float:
@@ -124,6 +157,26 @@ def narrow_ktru(
     s1 = _scores(query, names, toks)
     if enriched != query:
         s1 = np.maximum(s1, _scores(enriched, names, toks) * 0.9)
+    if domain in ("tools", None) and power_signal(product, raw):
+        head = norm(query).split()[0] if norm(query) else ""
+        syn = next((v for k, v in POWER_SYNONYMS.items() if head.startswith(k)), None)
+        if syn:
+            s1 = np.maximum(s1, _scores(syn + " " + query, names, toks) * 0.95)
+        okp = cat.okpd_for(pool)
+        s1 = s1 + np.where(np.char.startswith(okp, "28.24"), 20.0,
+                           np.where(np.char.startswith(okp, "25.7"), -15.0, 0.0))
+        res.power_tool = True
+    if domain in ("clothing", None):
+        qws = norm(product).split()
+        if work_signal(product):
+            okp = cat.okpd_for(pool)
+            s1 = s1 + np.where(np.char.startswith(okp, "14.12") | np.char.startswith(okp, "15.20.3"), 30.0, 0.0)
+        pen = np.zeros(len(names))
+        for st in QUALIFIER_STEMS:
+            if any(w.startswith(st) for w in qws):
+                continue
+            pen += np.array([any(w.startswith(st) for w in n.split()[1:]) for n in names], dtype=float)
+        s1 = s1 - 15.0 * pen
     order = np.argsort(-s1, kind="stable")
     best_s = float(s1[order[0]])
     keep_idx = [int(i) for i in order[:80] if s1[i] >= NAME_MIN and s1[i] >= best_s - NAME_BAND]
