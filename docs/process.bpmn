@@ -1,34 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-             id="Definitions_1"
-             targetNamespace="http://tenderhack2026.local/bpmn">
-  <process id="ClassifyProductToKTRU" name="Автозаполнение СТЕ → КТРУ" isExecutable="false">
-    <startEvent id="Start" name="Ввод описания"/>
-    <task id="DetectDomain" name="Определить домен"/>
-    <task id="ParseText" name="Разобрать текст"/>
-    <task id="Unify" name="Унифицировать характеристики"/>
-    <task id="Score" name="Оценить кандидатов КТРУ"/>
-    <task id="Narrow" name="Сузить по характеристикам"/>
-    <exclusiveGateway id="UniqueGw" name="Код однозначен?"/>
-    <task id="CheckReq" name="Проверить обязательные"/>
-    <exclusiveGateway id="MissingGw" name="Есть пробелы?"/>
-    <endEvent id="EndOk" name="КТРУ выбран"/>
-    <endEvent id="EndNeed" name="Нужны уточнения"/>
-    <endEvent id="EndAmb" name="Неоднозначно"/>
-
-    <sequenceFlow id="f1" sourceRef="Start" targetRef="DetectDomain"/>
-    <sequenceFlow id="f2" sourceRef="DetectDomain" targetRef="ParseText"/>
-    <sequenceFlow id="f3" sourceRef="ParseText" targetRef="Unify"/>
-    <sequenceFlow id="f4" sourceRef="Unify" targetRef="Score"/>
-    <sequenceFlow id="f5" sourceRef="Score" targetRef="Narrow"/>
-    <sequenceFlow id="f6" sourceRef="Narrow" targetRef="UniqueGw"/>
-    <sequenceFlow id="f7" name="да" sourceRef="UniqueGw" targetRef="CheckReq"/>
-    <sequenceFlow id="f8" name="нет" sourceRef="UniqueGw" targetRef="EndAmb"/>
-    <sequenceFlow id="f9" sourceRef="CheckReq" targetRef="MissingGw"/>
-    <sequenceFlow id="f10" name="нет" sourceRef="MissingGw" targetRef="EndOk"/>
-    <sequenceFlow id="f11" name="да" sourceRef="MissingGw" targetRef="EndNeed"/>
-  </process>
-</definitions>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs" targetNamespace="http://tenderhack.local/bpmn">
+<bpmn:collaboration id="Collab"><bpmn:participant id="Pool" name="Заполнение характеристик СТЕ" processRef="Process"/></bpmn:collaboration>
+<bpmn:process id="Process" isExecutable="false"><bpmn:laneSet id="LaneSet">
+<bpmn:lane id="Lane0" name="Пользователь"><bpmn:flowNodeRef>start</bpmn:flowNodeRef><bpmn:flowNodeRef>t_input</bpmn:flowNodeRef><bpmn:flowNodeRef>t_review</bpmn:flowNodeRef><bpmn:flowNodeRef>gw</bpmn:flowNodeRef><bpmn:flowNodeRef>t_edit</bpmn:flowNodeRef><bpmn:flowNodeRef>end</bpmn:flowNodeRef></bpmn:lane>
+<bpmn:lane id="Lane1" name="Сервис"><bpmn:flowNodeRef>t_parse</bpmn:flowNodeRef><bpmn:flowNodeRef>t_unify</bpmn:flowNodeRef><bpmn:flowNodeRef>t_match</bpmn:flowNodeRef><bpmn:flowNodeRef>t_resp</bpmn:flowNodeRef></bpmn:lane>
+<bpmn:lane id="Lane2" name="Данные"><bpmn:flowNodeRef>t_index</bpmn:flowNodeRef></bpmn:lane>
+</bpmn:laneSet>
+<bpmn:startEvent id="start" name="Нужен товар"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:task id="t_input" name="Ввести описание в свободной форме"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:task>
+<bpmn:task id="t_parse" name="Разобрать текст (parser)"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing></bpmn:task>
+<bpmn:task id="t_unify" name="Унифицировать названия и единицы (unifier)"><bpmn:incoming>f3</bpmn:incoming><bpmn:incoming>f11</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing></bpmn:task>
+<bpmn:task id="t_index" name="Поиск в индексе КТРУ и портала (SQLite)"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:task>
+<bpmn:task id="t_match" name="Сузить коды и проверить значения (matcher, engine)"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:task>
+<bpmn:task id="t_resp" name="Сформировать ответ: подсказки, воронка, кандидаты"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing></bpmn:task>
+<bpmn:task id="t_review" name="Просмотреть таблицу, подсказки и воронку"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing></bpmn:task>
+<bpmn:exclusiveGateway id="gw" name="Всё верно?"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f9</bpmn:outgoing><bpmn:outgoing>f10</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:task id="t_edit" name="Отредактировать значение или применить подсказку"><bpmn:incoming>f10</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing></bpmn:task>
+<bpmn:endEvent id="end" name="Характеристики заполнены, код КТРУ выбран"><bpmn:incoming>f9</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" name="" sourceRef="start" targetRef="t_input"/>
+<bpmn:sequenceFlow id="f2" name="" sourceRef="t_input" targetRef="t_parse"/>
+<bpmn:sequenceFlow id="f3" name="" sourceRef="t_parse" targetRef="t_unify"/>
+<bpmn:sequenceFlow id="f4" name="" sourceRef="t_unify" targetRef="t_index"/>
+<bpmn:sequenceFlow id="f5" name="" sourceRef="t_index" targetRef="t_match"/>
+<bpmn:sequenceFlow id="f6" name="" sourceRef="t_match" targetRef="t_resp"/>
+<bpmn:sequenceFlow id="f7" name="" sourceRef="t_resp" targetRef="t_review"/>
+<bpmn:sequenceFlow id="f8" name="" sourceRef="t_review" targetRef="gw"/>
+<bpmn:sequenceFlow id="f9" name="да" sourceRef="gw" targetRef="end"/>
+<bpmn:sequenceFlow id="f10" name="нет" sourceRef="gw" targetRef="t_edit"/>
+<bpmn:sequenceFlow id="f11" name="пересчёт ≈600 мс" sourceRef="t_edit" targetRef="t_unify"/>
+</bpmn:process><bpmndi:BPMNDiagram id="Diagram"><bpmndi:BPMNPlane id="Plane" bpmnElement="Collab">
+<bpmndi:BPMNShape id="Pool_di" bpmnElement="Pool" isHorizontal="true"><dc:Bounds x="40" y="30" width="1660" height="570"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="Lane0_di" bpmnElement="Lane0" isHorizontal="true"><dc:Bounds x="80" y="30" width="1620" height="190"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="Lane1_di" bpmnElement="Lane1" isHorizontal="true"><dc:Bounds x="80" y="220" width="1620" height="190"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="Lane2_di" bpmnElement="Lane2" isHorizontal="true"><dc:Bounds x="80" y="410" width="1620" height="190"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="start_di" bpmnElement="start"><dc:Bounds x="160" y="107" width="36" height="36"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_input_di" bpmnElement="t_input"><dc:Bounds x="240" y="85" width="150" height="80"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_parse_di" bpmnElement="t_parse"><dc:Bounds x="200" y="275" width="150" height="80"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_unify_di" bpmnElement="t_unify"><dc:Bounds x="400" y="275" width="150" height="80"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_index_di" bpmnElement="t_index"><dc:Bounds x="600" y="465" width="150" height="80"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_match_di" bpmnElement="t_match"><dc:Bounds x="800" y="275" width="150" height="80"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_resp_di" bpmnElement="t_resp"><dc:Bounds x="1000" y="275" width="150" height="80"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_review_di" bpmnElement="t_review"><dc:Bounds x="1000" y="55" width="150" height="80"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="gw_di" bpmnElement="gw"><dc:Bounds x="1240" y="70" width="50" height="50"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_edit_di" bpmnElement="t_edit"><dc:Bounds x="1330" y="130" width="150" height="62"/></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="end_di" bpmnElement="end"><dc:Bounds x="1600" y="77" width="36" height="36"/></bpmndi:BPMNShape>
+<bpmndi:BPMNEdge id="f1_di" bpmnElement="f1"><di:waypoint x="196" y="125"/><di:waypoint x="240" y="125"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f2_di" bpmnElement="f2"><di:waypoint x="315" y="165"/><di:waypoint x="315" y="220"/><di:waypoint x="275" y="220"/><di:waypoint x="275" y="275"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f3_di" bpmnElement="f3"><di:waypoint x="350" y="315"/><di:waypoint x="400" y="315"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f4_di" bpmnElement="f4"><di:waypoint x="475" y="355"/><di:waypoint x="475" y="505"/><di:waypoint x="600" y="505"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f5_di" bpmnElement="f5"><di:waypoint x="750" y="505"/><di:waypoint x="875" y="505"/><di:waypoint x="875" y="355"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f6_di" bpmnElement="f6"><di:waypoint x="950" y="315"/><di:waypoint x="1000" y="315"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f7_di" bpmnElement="f7"><di:waypoint x="1075" y="275"/><di:waypoint x="1075" y="135"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f8_di" bpmnElement="f8"><di:waypoint x="1150" y="95"/><di:waypoint x="1240" y="95"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f9_di" bpmnElement="f9"><di:waypoint x="1290" y="95"/><di:waypoint x="1600" y="95"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f10_di" bpmnElement="f10"><di:waypoint x="1265" y="120"/><di:waypoint x="1265" y="161"/><di:waypoint x="1330" y="161"/></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f11_di" bpmnElement="f11"><di:waypoint x="1405" y="192"/><di:waypoint x="1405" y="208"/><di:waypoint x="475" y="208"/><di:waypoint x="475" y="275"/></bpmndi:BPMNEdge>
+</bpmndi:BPMNPlane></bpmndi:BPMNDiagram></bpmn:definitions>
