@@ -100,3 +100,10 @@ def test_csv_stream_accept_header(client):
 def test_csv_empty_422(client):
     r = client.post("/api/analyze/csv", files={"file": ("x.csv", b"\n\n", "text/csv")})
     assert r.status_code == 422
+
+
+def test_openapi_advertises_stream_param():
+    """The UI enables NDJSON only if /openapi.json lists a `stream` parameter on /api/analyze/batch."""
+    from app.main import app
+    op = app.openapi()["paths"]["/api/analyze/batch"]["post"]
+    assert any(p["name"] == "stream" for p in op.get("parameters", []))

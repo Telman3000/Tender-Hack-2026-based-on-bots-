@@ -11,7 +11,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Literal
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from fastapi.staticfiles import StaticFiles
@@ -134,7 +134,8 @@ def _respond(items: list[dict], hint: str | None, request: Request, extra: dict 
 
 
 @app.post("/api/analyze/batch")
-def analyze_batch(req: BatchRequest, request: Request):
+def analyze_batch(req: BatchRequest, request: Request,
+                  stream: str | None = Query(None, description="1 → построчный NDJSON-поток (application/x-ndjson)")):
     if len(req.items) > BATCH_MAX:
         raise HTTPException(413, f"Слишком много строк: {len(req.items)}, максимум {BATCH_MAX}")
     items = [{"id": it.id if it.id is not None else i + 1, "text": it.text or ""} for i, it in enumerate(req.items)]
@@ -186,7 +187,8 @@ def parse_names_csv(text: str) -> tuple[list[dict], dict]:
 
 @app.post("/api/analyze/csv")
 async def analyze_csv(request: Request, file: UploadFile = File(...),
-                      domain_hint: Literal["furniture", "clothing", "tools"] | None = None):
+                      domain_hint: Literal["furniture", "clothing", "tools"] | None = None,
+                      stream: str | None = Query(None, description="1 → построчный NDJSON-поток (application/x-ndjson)")):
     raw = await file.read()
     if len(raw) > 5_000_000:
         raise HTTPException(413, "Файл больше 5 МБ")
