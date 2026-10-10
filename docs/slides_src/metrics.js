@@ -30,7 +30,7 @@ module.exports = {
     source: 'qa/metrics_slide.md',
     build: 'Версия: main ab39ee1',
     falseAlarmsStrict: '1/42',
-    softWarnings: '4/42',
+    softWarnings: '3/42',
     latencyHeadline: 'медиана < 0,1 с',
     p50Range: '50–100 мс',
     p50: { main: '51–54 мс', heldOut: '48–54 мс' },     // 2 прогона
