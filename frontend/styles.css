@@ -57,3 +57,16 @@ table.chars{width:100%;border-collapse:collapse}
 .cand-item .score{margin-left:auto;color:var(--muted)}
 ul.next{margin:0;padding-left:18px}
 .foot{max-width:1280px;margin:0 auto 24px;padding:0 24px;color:var(--muted);font-size:13px}
+
+/* подсветка, статусы, было→стало */
+.hl-preview{margin-top:6px;padding:8px 10px;border:1px dashed #c9d3e0;border-radius:6px;background:#fafbfd;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
+.hl-preview mark{border-radius:3px;padding:0 2px;cursor:help}
+.hl-preview mark.error{background:#fde2e2;color:#a40000;border-bottom:2px solid #d62828}
+.hl-preview mark.warning{background:#fff1d6;color:#8a5200;border-bottom:2px solid #f08c00}
+.sbadges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.sbadge{padding:4px 10px;border-radius:12px;font-weight:600;font-size:13px}
+.sbadge.good{background:#e3f4e8;color:#1c6b34}.sbadge.mid{background:#fff1d6;color:#8a5200}.sbadge.bad{background:#fde2e2;color:#a40000}
+.small{font-size:12px;margin-bottom:10px}
+.corr{margin:4px 0}.corr .kind{display:inline-block;font-size:11px;padding:1px 6px;border-radius:8px;background:#e8eef7;color:#264b80;margin-right:6px}
+.corr .from{text-decoration:line-through;color:#a40000}.corr .to{color:#1c6b34;font-weight:600}
+ul.next li.opt{color:#8a94a6}
