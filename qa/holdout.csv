@@ -1,0 +1,46 @@
+﻿id,category,type,query,expected_code,expected_status,comment
+H01,clothing,clean,Брюки женские «Инга» синие р. 92/158-164 Вид отделки Малосминаемая Вид размера Стандартный Вид товаров Одежда,14.13.12.140,ok|ambiguous|need_more,portal ste_id=34795432; ACTIVE KTRU: Брюки
+H02,clothing,incomplete,Брюки,14.13.12.140,need_more|ambiguous,type only; ACTIVE KTRU: Брюки
+H03,clothing,clean,"Сорочка мужская белая, длинный рукав р.45/176 арт.1.064 Вид рукава Длинный Воротник Отложной со стойкой Плотность ткани 105 г/кв.м",14.14.11.000,ok|ambiguous|need_more,portal ste_id=28574702; ACTIVE KTRU: Сорочка мужская
+H04,clothing,clean,Фартук мед. клеенка Вид защиты Защита от общих производственных загрязнений Вид спецодежды Фартук Вид товаров Одежда,14.12.30.130,ok|ambiguous|need_more,portal ste_id=34740819; ACTIVE KTRU: Фартук профессиональный
+H05,clothing,incomplete,Фартук,14.12.30.130,need_more|ambiguous,type only; ACTIVE KTRU: Фартук профессиональный
+H06,clothing,clean,Жакет женский «Элис» белый с розовой отделкой р. 120/158-164 арт.3.812 Вид размера Стандартный Воротник воротник-стойка Застежка на молнию,14.13.33.000,ok|ambiguous|need_more,portal ste_id=34776985; ACTIVE KTRU: Жакет женский
+H07,clothing,clean,"Кроссовки баскетбольные Nike Air Max Impact (CI1396-600, красный, черный, US, 12.5) Вес 500 г Материал верха текстиль Материал подошвы ЭВА",15.20.21.140,ok|ambiguous|need_more,portal ste_id=24425290; ACTIVE KTRU: Кроссовки
+H08,clothing,incomplete,Кроссовки,15.20.21.140,need_more|ambiguous,type only; ACTIVE KTRU: Кроссовки
+H09,clothing,clean,Сапоги резиновые с защитным подноском (размер 44) Вид крепления подошвы литьевой Вид средства защиты ног Сапоги Вид товаров Одежда,15.20.11.113,ok|ambiguous|need_more,portal ste_id=34736340; ACTIVE KTRU: Сапоги резиновые формовые
+H10,clothing,clean,Блузка с воротником женская «Поло» сиреневая р. 96/164-170 Вид одежда для взрослых Футболка Вид размера Стандартный Вид товаров Одежда,14.14.20.000,ok|ambiguous|need_more,portal ste_id=34830998; ACTIVE KTRU: Блузка женская
+H11,clothing,incomplete,Блузка,14.14.20.000,need_more|ambiguous,type only; ACTIVE KTRU: Блузка женская
+H12,clothing,clean,"Перчатки трикотажные белые с ПВХ покрытием 10 класса вязки, размер 11 Класс вязки 10.00000 Количество нитей. 2.00000 Материал Трикотаж",14.12.30.150,ok|ambiguous|need_more,portal ste_id=34733592; ACTIVE KTRU: Перчатки трикотажные для защиты от внешних воздействий
+H13,clothing,incomplete,Перчатки трикотажные,14.12.30.150,need_more|ambiguous,type only; ACTIVE KTRU: Перчатки трикотажные для защиты от внешних воздействий
+H14,clothing,clean,"Шорты для мальчика Вид основного сырья (волокна) в составе ткани/трикотажного полотна Хлопок Вид товаров Одежда Виды одежды (включая форменную), головных уборов, одежды специальной Одежда для детей",14.13.10.000,ok|ambiguous|need_more,portal ste_id=34868659; ACTIVE KTRU: Шорты
+H15,clothing,incomplete,Шорты,14.13.10.000,need_more|ambiguous,type only; ACTIVE KTRU: Шорты
+H16,furniture,clean,"Тумба прикроватная ""Микэвол"", Бук, 700х450х600 мм Высота тумбы 70.00000 см Глубина тумбы 45.00000 см количество колес 4 шт",31.09.12.124,ok|ambiguous|need_more,portal ste_id=24277336; ACTIVE KTRU: Тумба прикроватная
+H17,furniture,clean,Диван Фристайл Домино 2-х местный В составе набора мебели Нет Вид материала наполнителя Высокоэластичный поролон HR5535 Вид материала ножек/опор Металл,31.09.12.110,ok|ambiguous|need_more,portal ste_id=35330751; ACTIVE KTRU: Диван
+H18,furniture,incomplete,Диван,31.09.12.110,need_more|ambiguous,type only; ACTIVE KTRU: Диван
+H19,furniture,clean,"Вешалка настенная SHT-WH4, 230?650?250 мм, 5 крючков + полка, дерево/металл, венге/хром Высота 230.00000 мм Расстояние между крючками 128 мм Ширина (габарит x) 650 мм",31.09.11.120,ok|ambiguous|need_more,portal ste_id=16783919; ACTIVE KTRU: Вешалка металлическая
+H20,furniture,incomplete,Вешалка,31.09.11.120,need_more|ambiguous,type only; ACTIVE KTRU: Вешалка металлическая
+H21,furniture,clean,"Кровать детская двухуровневая выкатная ЛДСП/МДФ, 661х703х1542 мм Вид материала фасада МДФ Высота 661.00000 мм Глубина 703 мм",31.09.10.000|31.09.12.121,ok|ambiguous|need_more,"portal ste_id=34316986; ACTIVE KTRU: Кровать для взрослых бытового назначения, Кровать детская"
+H22,furniture,incomplete,Кровать,31.09.10.000|31.09.12.121,need_more|ambiguous,"type only; ACTIVE KTRU: Кровать для взрослых бытового назначения, Кровать детская"
+H23,furniture,clean,"Банкетка ""Ида"" 1200 БМ7, черная, 400х400х1200 мм Вес 7.20000 кг Вид материала корпуса Металл Вид поставки В собранном виде",31.09.13.190,ok|ambiguous|need_more,portal ste_id=34804244; ACTIVE KTRU: Банкетка
+H24,furniture,clean,"Табурет ""ЗАКАЗ МЕБЕЛЬ"" Продленка белый Высота 350.00000 мм Длина 300 мм Материал корпуса ЛДСП",31.09.10.000,ok|ambiguous|need_more,portal ste_id=34323467; ACTIVE KTRU: Табурет
+H25,furniture,incomplete,Табурет,31.09.10.000,need_more|ambiguous,type only; ACTIVE KTRU: Табурет
+H26,furniture,clean,Полка настольная О30.6 (067) орех 1400 В разобранном виде Да Высота (габарит y) 405 мм Гарантийный срок 24,31.09.11.130,ok|ambiguous|need_more,portal ste_id=1241928; ACTIVE KTRU: Полка навесная
+H27,furniture,clean,Витрина настенная навесная 1100х250х1000 Вид материала каркаса алюминиевый профиль Вид материала полок стекло Вид продукции Товары,31.09.11.190,ok|ambiguous|need_more,portal ste_id=20326579; ACTIVE KTRU: Витрина
+H28,furniture,incomplete,Витрина,31.09.11.190,need_more|ambiguous,type only; ACTIVE KTRU: Витрина
+H29,furniture,clean,Стол компьютерный офисный Вид материала каркаса ЛДСП Вид материала отделочной кромки ПВХ Вид материала полок ЛДСП,31.09.10.000,ok|ambiguous|need_more,portal ste_id=35137874; ACTIVE KTRU: Стол компьютерный
+H30,furniture,incomplete,Стол компьютерный,31.09.10.000,need_more|ambiguous,type only; ACTIVE KTRU: Стол компьютерный
+H31,tools,clean,Электролобзик Graphite 58G071 Быстрозажимное крепление пилки Нет Вес 2.1 г Высота 225.00000 мм,28.24.11.000,ok|ambiguous|need_more,portal ste_id=34349530; ACTIVE KTRU: Электролобзик
+H32,tools,incomplete,Электролобзик,28.24.11.000,need_more|ambiguous,type only; ACTIVE KTRU: Электролобзик
+H33,tools,clean,"Шуруповерт аккумуляторный Metabo ""BS 18"". 602207500 Акб в комплекте 2 шт Вес 3.75000 кг Макс. диаметр отверстия в дереве 38 мм",28.24.11.000,ok|ambiguous|need_more,portal ste_id=1160622; ACTIVE KTRU: Шуруповерт
+H34,tools,incomplete,Шуруповерт,28.24.11.000,need_more|ambiguous,type only; ACTIVE KTRU: Шуруповерт
+H35,tools,clean,Струбцина F-образная монтажная 120х500 SKRAB 25158 Вес инструмента 1.80000 кг Глубина зажима 120 мм Материал рамы струбцины сталь,25.73.30.223,ok|ambiguous|need_more,portal ste_id=23632185; ACTIVE KTRU: Струбцина
+H36,tools,incomplete,Струбцина,25.73.30.223,need_more|ambiguous,type only; ACTIVE KTRU: Струбцина
+H37,tools,clean,Тиски слесарные GERARDI STD 47.3.03.30000 (150 мм) Вес 29.00000 кг Высота 103 мм Высота губок 50 мм,25.73.30.221,ok|ambiguous|need_more,portal ste_id=20491354; ACTIVE KTRU: Тиски слесарные
+H38,tools,clean,Клещи ERDI 40-90 270 мм Артикул производителя ER-D35-60-P Вес 0.76000 кг Длина 270 мм,25.73.30.166,ok|ambiguous|need_more,portal ste_id=24068222; ACTIVE KTRU: Клещи
+H39,tools,incomplete,Клещи,25.73.30.166,need_more|ambiguous,type only; ACTIVE KTRU: Клещи
+H40,tools,clean,"Молоток слесарный Fiberglass 20050-03 20050-03_z01, 300гр Габаритные размеры 102х22х321 мм Масса молотка 0.48000 кг Материал рукоятки Фибергласовая обрезиненная рукоятка",25.73.30.141,ok|ambiguous|need_more,portal ste_id=28512230; ACTIVE KTRU: Молоток
+H41,tools,clean,Шпатель STAYER резиновый 150 мм Материал полотна Резина Тип Резиновый шпатель Цвет Белый,25.73.30.299,ok|ambiguous|need_more,portal ste_id=34242371; ACTIVE KTRU: Шпатель
+H42,tools,incomplete,Шпатель,25.73.30.299,need_more|ambiguous,type only; ACTIVE KTRU: Шпатель
+H43,tools,clean,"Стамеска ПЕТРОГРАДЪ, косая РК, левая, 6мм Вес 130 г Высота 29 мм Длина 250 мм",25.73.30.210,ok|ambiguous|need_more,portal ste_id=34314463; ACTIVE KTRU: Стамеска
+H44,tools,clean,Киянка резиновая TOPEX 680 гр Вес 790.00000 г Вес бойка 680.00000 г Габаритные размеры 337х116х63,25.73.30.290,ok|ambiguous|need_more,portal ste_id=32344621; ACTIVE KTRU: Киянка
+H45,tools,incomplete,Киянка,25.73.30.290,need_more|ambiguous,type only; ACTIVE KTRU: Киянка
