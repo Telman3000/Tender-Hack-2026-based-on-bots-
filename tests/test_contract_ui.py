@@ -152,3 +152,24 @@ def test_single_word_tools_without_hint(eng):
     assert r.best_ktru.code.startswith("28.24.1"), r.best_ktru
     r = eng.analyze(AnalyzeRequest(text="Отвертка"))
     assert r.best_ktru.code.startswith(("25.73.3", "28.24.1")), r.best_ktru
+
+
+
+@needs_db
+def test_ldsp_frame_only_when_explicit():
+    e = CatalogEngine()
+    r = e.analyze(AnalyzeRequest(text="Стол письменный ЛДСП", domain_hint="furniture"))
+    vals = {c.name: c.value for c in r.characteristics}
+    assert not vals.get("Вид материала каркаса")
+    r = e.analyze(AnalyzeRequest(text="Стол письменный каркас ЛДСП столешница МДФ", domain_hint="furniture"))
+    vals = {c.name: c.value for c in r.characteristics}
+    assert not vals.get("Вид материала каркаса") or "ЛДСП" in vals["Вид материала каркаса"]
+    assert "ЛДСП" not in (vals.get("Вид материала столешницы") or "")
+
+
+@needs_db
+def test_metal_document_cabinet_not_clothes():
+    r = CatalogEngine().analyze(AnalyzeRequest(text="Шкаф металлический для документов сварной",
+                                               domain_hint="furniture"))
+    name = r.best_ktru.name.lower()
+    assert "одежд" not in name and "деревян" not in name

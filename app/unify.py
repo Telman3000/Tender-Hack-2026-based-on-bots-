@@ -35,6 +35,31 @@ def _text_stems(text: str) -> dict[str, str]:
     return out
 
 
+# parts of an item: a value right after the part word belongs to that part only
+_PARTS = ("каркас", "столешниц", "обивк", "спинк", "сиден", "фасад", "корпус", "подошв", "верх")
+
+
+def _part_windows(text: str) -> dict[str, list[str]]:
+    ws = norm(text).split()
+    out: dict[str, list[str]] = {}
+    for i, w in enumerate(ws):
+        for p in _PARTS:
+            if w.startswith(p):
+                out.setdefault(p, []).extend(ws[i + 1:i + 4])
+    return out
+
+
+def _stems_for_spec(spec_key: str, text: str, windows: dict[str, list[str]]) -> dict[str, str]:
+    spec_parts = [p for p in _PARTS if p in spec_key]
+    own = [p for p in spec_parts if p in windows]
+    if own:
+        return _text_stems(" ".join(w for p in own for w in windows[p]))
+    if "каркас" in spec_parts:
+        return {}  # frame material only when stated explicitly («каркас ЛДСП»)
+    foreign = {w for p, ws in windows.items() if p not in spec_parts for w in ws}
+    return _text_stems(" ".join(w for w in norm(text).split() if w not in foreign))
+
+
 def _enum_from_text(spec, stems: dict[str, str]) -> tuple[str, str] | None:
     """Pick the allowed KTRU value whose significant words occur in the description."""
     best, best_sc, tie = None, 0.0, False
@@ -130,11 +155,11 @@ def unify_characteristics(
 
     # required KTRU characteristics not provided
     if best:
-        stems = _text_stems(text)
+        windows = _part_windows(text)
         for k, sp in best.specs.items():
             if not sp.required or k in used:
                 continue
-            found = _enum_from_text(sp, stems) if sp.enums else None
+            found = _enum_from_text(sp, _stems_for_spec(k, text, windows)) if sp.enums else None
             if found:
                 value, words = found
                 out.append(ParsedCharacteristic(
