@@ -220,14 +220,20 @@ _SPECIFIC_DIMS = {"power", "voltage", "current", "charge", "rpm", "freq", "torqu
 
 
 def _group_profile(cat: Catalog, best: KtruEntry) -> tuple[set[str], set[str]]:
-    """Dimensions and characteristic name stems used by KTRU positions of the chosen code's OKPD2 group."""
+    """Dimensions and characteristic name stems used by KTRU positions of the chosen code's OKPD2 class.
+
+    Positions of the same OKPD2 class (first two levels, 28.24 = power tools) with the same head noun count,
+    so a power rating is normal for a 28.24.x jackhammer even if its exact group does not list it; power-tool
+    and machine names (see _POWERED) never get such a warning.
+    """
     cache = cat.__dict__.setdefault("_group_profile", {})
-    key = best.okpd2 or best.code[:12]
+    head = (best.name_norm.split() or [""])[0][:5]
+    key = ((best.okpd2 or best.code)[:5], head)
     if key not in cache:
         dims: set[str] = set()
         stems: set[str] = set()
         for e in cat.entries:
-            if (e.okpd2 or e.code[:12]) != key:
+            if (e.okpd2 or e.code)[:5] != key[0] or (e.name_norm.split() or [""])[0][:5] != head:
                 continue
             for sp in e.specs.values():
                 d = dimension(canon_unit(sp.unit)) or expected_dimension(sp.name)
@@ -238,13 +244,27 @@ def _group_profile(cat: Catalog, best: KtruEntry) -> tuple[set[str], set[str]]:
     return cache[key]
 
 
-def suspicious_issue(cat: Catalog, best: KtruEntry | None, name: str, value: str, unit: str | None) -> Issue | None:
+_POWERED = ("аккумулятор", "электр", "отбойн", "пневмат", "сетев", "беспровод", "бесщеточ", "перфорат",
+            "гайковерт", "болгарк", "лобзик", "дрел", "шуруповерт", "шлифмашин", "пила", "пилы", "рубан",
+            "фрезер", "молоток отбойн", "компрессор", "генератор", "станок", "машин", "триммер", "газонокос",
+            "мойк", "пылесос", "фен", "паяльн", "сварочн", "насос")
+
+
+def _powered(text: str) -> bool:
+    t = norm(text)
+    return any(f" {st}" in f" {t}" for st in _POWERED)
+
+
+def suspicious_issue(cat: Catalog, best: KtruEntry | None, name: str, value: str, unit: str | None,
+                     text: str = "") -> Issue | None:
     """«мощность гаечного ключа 100»: a quantity whose dimension no KTRU position of this item type has."""
     if best is None or not value:
         return None
     dim = dimension(canon_unit(unit)) or expected_dimension(name)
     if dim not in _SPECIFIC_DIMS:
         return None
+    if _powered(best.name) or _powered(text):
+        return None  # power tools / machines: power, voltage, rpm... are normal
     dims, stems = _group_profile(cat, best)
     if dim in dims or any(_wstem(w) in stems for w in norm(name).split() if len(w) >= 4):
         return None
@@ -347,7 +367,7 @@ def unify_characteristics(
             used.add(spec.name.lower())
         else:
             canon = CHAR_ALIASES.get(item.name.lower().strip())
-            sus = suspicious_issue(cat, best, item.name, value, unit)
+            sus = suspicious_issue(cat, best, item.name, value, unit, text)
             match = None
             if portal:
                 match = process.extractOne(canon or item.name, portal, scorer=fuzz.WRatio, score_cutoff=85)

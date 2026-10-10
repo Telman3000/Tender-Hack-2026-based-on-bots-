@@ -113,7 +113,7 @@ docker compose up --build      # http://127.0.0.1:8000/
 ## Проверка
 
 ```bash
-python -m pytest -q            # 101 passed (без catalog.db часть тестов пропускается)
+python -m pytest -q            # 109 passed (без catalog.db часть тестов пропускается)
 curl -s -X POST http://127.0.0.1:8000/api/analyze -H "Content-Type: application/json" \
      -d '{"text":"Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"}'
 python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и qa/summary.md
@@ -190,7 +190,8 @@ curl -s -X POST "http://127.0.0.1:8000/api/analyze/csv?stream=1" -F "file=@names
 Индекс КТРУ: берутся только файлы `all_actual` (файлы `all_not-actual` пропускаются) и позиции со статусом
 не TERMINATED/INACTIVE; из нескольких версий одной позиции остаётся самая новая (`version`, затем
 `updateDate`), а полностью одинаковые позиции (то же наименование, ОКПД2 и характеристики) сводятся
-к одной, самой новой (при сборке — 361 такая позиция).
+к одной, самой новой (при сборке — 361 такая позиция). Итог: 3030 позиций КТРУ в трёх доменах,
+сборка индекса ~60 с.
 
 ## Частые проблемы
 

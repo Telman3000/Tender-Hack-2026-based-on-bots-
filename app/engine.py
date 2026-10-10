@@ -36,9 +36,23 @@ def _drop_invisible(text: str) -> tuple[str, list[int] | None]:
     return "".join(out), back
 
 
+_COMPLEMENT = {"для", "из", "с", "со", "в", "во", "на", "от", "по", "под", "без", "к", "при"}
+
+
+def _name_head(ktru_name: str) -> list[str]:
+    """Head of a KTRU name: words before its complement («Сумка для ноутбука» -> [сумка])."""
+    out = []
+    for w in norm(ktru_name).split():
+        if w in _COMPLEMENT:
+            break
+        out.append(w)
+    return out
+
+
 def _name_overlap(product: str, ktru_name: str) -> bool:
-    st = lambda s: {w[:4] for w in norm(s).split() if len(w) >= 3}  # noqa: E731
-    return bool(st(product) & st(ktru_name))
+    """The item word must match the head of the KTRU name; words of «для X» complements do not count."""
+    st = lambda ws: {w[:4] for w in ws if len(w) >= 3}  # noqa: E731
+    return bool(st(norm(product).split()) & st(_name_head(ktru_name)))
 
 
 def choose_question(group, filled_names: set[str]) -> Question | None:
@@ -290,11 +304,12 @@ class CatalogEngine:
         n_total = len(nr.best.specs) if nr.best is not None else 0
         n_filled = sum(1 for c in ktru_rows if c.value)
         rq = [c for c in ktru_rows if c.required]
-        fill = FillCounter(
+        fill = None if (nr.best is None or n_total == 0) else FillCounter(
             filled=n_filled, total=max(n_total, len(ktru_rows)),
             required_filled=sum(1 for c in rq if c.value), required_total=len(rq),
             text=(f"Заполнено {n_filled} из {max(n_total, len(ktru_rows))} характеристик КТРУ "
-                  f"(обязательных {sum(1 for c in rq if c.value)} из {len(rq)})") if nr.best is not None else "")
+                  f"(обязательных {sum(1 for c in rq if c.value)} из {len(rq)})"))
+        no_chars_msg = "У позиции КТРУ нет характеристик" if nr.best is not None and n_total == 0 else None
         question = choose_question(nr.group, {c.name for c in chars if c.value}) if nr.best is not None else None
         has_error = any(i.severity == "error" for i in issues)
         req_rows = [c for c in chars if c.required]
@@ -324,6 +339,6 @@ class CatalogEngine:
             fill=fill,
             question=question,
             out_of_scope=out_of_scope,
-            message=OUT_OF_SCOPE_MSG if out_of_scope else None,
+            message=OUT_OF_SCOPE_MSG if out_of_scope else no_chars_msg,
             debug={"raw_count": len(raw), "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1)},
         )
