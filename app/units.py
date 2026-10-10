@@ -81,7 +81,14 @@ def canon_unit(unit: str | None) -> str | None:
             return k
     # OKEI names like "Метр" / "Сантиметр"
     first = low.split(";")[0].strip()
-    return _ALIASES.get(first)
+    if first in _ALIASES:
+        return _ALIASES[first]
+    for stem, cu in (("миллиметр", "мм"), ("сантиметр", "см"), ("метр", "м"), ("килограмм", "кг"),
+                     ("грамм", "г"), ("миллилитр", "мл"), ("литр", "л"), ("киловатт", "кВт"),
+                     ("ватт", "Вт"), ("вольт", "В")):
+        if first.startswith(stem):
+            return cu
+    return None
 
 
 def dimension(unit: str | None) -> str | None:

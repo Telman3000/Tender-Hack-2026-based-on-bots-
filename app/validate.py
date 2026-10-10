@@ -9,6 +9,13 @@ from app.catalog import CharSpec, norm
 from app.models import Issue
 from app.units import canon_unit, convert, dimension, expected_dimension, fmt, guess_unit, to_number
 
+# common-sense upper bounds when KTRU gives no range: domain -> dim -> (unit, max, label)
+_LIMITS = {
+    "furniture": {"length": ("м", 5, "мебели"), "mass": ("кг", 500, "мебели")},
+    "tools": {"length": ("м", 3, "ручного инструмента"), "mass": ("кг", 100, "инструмента"),
+              "voltage": ("В", 1000, "инструмента"), "power": ("Вт", 10000, "инструмента")},
+    "clothing": {"length": ("м", 3, "одежды"), "mass": ("кг", 20, "одежды")},
+}
 _DIM_HINT = {"length": ["мм", "см"], "mass": ["кг", "г"], "volume": ["л", "мл"], "power": ["Вт"]}
 
 
@@ -177,11 +184,14 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None) -
     if num <= 0 and any(k in low for k in ("высот", "ширин", "глубин", "длин", "масс", "вес", "мощност")):
         out.append(Issue.make("mismatch", field=name, value=value, expected="> 0",
                               message=f"«{name}» должно быть положительным", severity="error"))
-    if u and dimension(u) == "length" and domain == "furniture":
-        m = convert(num, u, "м")
-        if m is not None and m > 5:
+    limits = _LIMITS.get(domain or "", {})
+    dim = dimension(u) if u else None
+    if dim in limits:
+        base_u, hi, what = limits[dim]
+        conv = convert(num, u, base_u)
+        if conv is not None and conv > hi:
             out.append(Issue.make(
-                "mismatch", field=name, value=f"{value} {u}", expected="до 5 м",
-                message=f"«{name}» = {value} {u} ({fmt(m)} м) нереалистично для мебели",
-                suggestions=[f"{value} см", f"{value} мм"], severity="warning"))
+                "mismatch", field=name, value=f"{value} {u}", expected=f"до {fmt(hi)} {base_u}",
+                message=f"«{name}» = {value} {u} нереалистично для {what} (больше {fmt(hi)} {base_u})",
+                suggestions=[f"{value} {x}" for x in _DIM_HINT.get(dim, []) if x != u][:2], severity="error"))
     return out
