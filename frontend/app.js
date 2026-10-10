@@ -11,7 +11,8 @@ const STATUS_LABELS = {
 };
 const STEP_LABELS = { initial: "Все коды", domain: "Категория", okpd2: "ОКПД2", name: "Наименование" };
 
-const state = { chars: [], data: null, seq: 0, timer: null };
+const state = { chars: [], data: null, seq: 0, timer: null, dirty: new Map(), textNote: false, origText: null };
+const statusLabel = (st) => STATUS_LABELS[st] || (st ? "Статус: " + st : "");
 
 function escapeHtml(s) {
   return String(s ?? "")
@@ -89,10 +90,13 @@ async function analyze(withChars) {
   $("status").className = "status idle";
   $("status").textContent = "Проверяем…";
   const body = { text, domain_hint: $("domain").value || null };
+  // withChars: правка таблицы -> вся текущая таблица; правка текста -> только «грязные» строки
+  // (правки таблицы имеют приоритет над текстом, пока их не сбросили)
+  const toPayload = (c) => ({ name: c.name.trim(), value: String(c.value ?? ""), unit: c.unit || null });
   if (withChars) {
-    body.characteristics = state.chars
-      .filter((c) => c.name.trim())
-      .map((c) => ({ name: c.name.trim(), value: String(c.value), unit: c.unit || null }));
+    body.characteristics = state.chars.filter((c) => c.name.trim()).map(toPayload);
+  } else if (state.dirty.size) {
+    body.characteristics = [...state.dirty.values()].filter((c) => c.name.trim()).map(toPayload);
   }
   try {
     const res = await fetch("/api/analyze", {
@@ -205,6 +209,12 @@ function funnelBlock(steps, candidates) {
 function render(data) {
   state.data = data;
   state.chars = (data.characteristics || []).map(normChar);
+  // повторно применяем правки пользователя из таблицы поверх ответа
+  for (const [key, ov] of state.dirty) {
+    const row = state.chars.find((c) => norm(c.name) === key);
+    if (row) { row.value = ov.value; row.unit = ov.unit; }
+    else state.chars.push(normChar({ ...ov, source: ov.source || "new" }));
+  }
   draw();
 }
 function draw() {
@@ -218,7 +228,7 @@ function draw() {
   const steps = normSteps(data);
   const candidates = getCandidates(data, steps);
   $("status").className = `status ${data.status || "idle"}`;
-  $("status").textContent = STATUS_LABELS[data.status] || data.status || "";
+  $("status").textContent = statusLabel(data.status);
 
   const best = data.best_ktru
     ? `<div class="block"><h2>Код КТРУ</h2><div class="best"><span class="code">${escapeHtml(data.best_ktru.code)}</span><span class="muted">${data.best_ktru.score ?? ""}</span></div>
@@ -237,7 +247,7 @@ function draw() {
     <div class="block"><h2>Распознано${elapsed}</h2>
       <div class="muted">Категория: <b>${escapeHtml(data.detected_domain || "—")}</b> · Товар: <b>${escapeHtml(data.product_guess || "—")}</b></div></div>
     ${best}
-    <div class="block"><h2>Характеристики</h2>${charsTable(issues)}</div>
+    <div class="block"><h2>Характеристики</h2>${charsTable(issues)}${state.dirty.size ? `<div class="hint" id="ovNote">Изменено в таблице: ${state.dirty.size}${state.textNote ? " · правки таблицы имеют приоритет над текстом" : ""} <button class="btn ghost small" id="resetOv">Сбросить правки таблицы</button></div>` : ""}</div>
     <div class="block"><h2>Подсказки</h2>${ib.html}</div>
     <div class="block"><h2>Сужение кодов КТРУ</h2>${funnelBlock(steps, candidates)}</div>
     ${next}`;
@@ -253,12 +263,28 @@ function bind(otherIssues) {
   root.querySelectorAll("[data-k]").forEach((el) => {
     const ev = el.tagName === "SELECT" ? "change" : "input";
     el.addEventListener(ev, () => {
-      state.chars[+el.dataset.i][el.dataset.k] = el.value;
+      const row = state.chars[+el.dataset.i];
+      const k = el.dataset.k;
+      const prev = row[k];
+      if (k === "name") {
+        state.dirty.delete(norm(prev)); // имя поменяли — старая правка снимается
+        row[k] = el.value;
+      } else {
+        row[k] = el.value;
+        syncText(row, k, String(prev ?? ""), String(el.value ?? ""));
+        markDirty(row);
+      }
       schedule(true);
     });
   });
   root.querySelectorAll("[data-del]").forEach((el) =>
     el.addEventListener("click", () => { state.chars.splice(+el.dataset.del, 1); draw(); schedule(true); }));
+  const reset = $("resetOv");
+  if (reset) reset.addEventListener("click", () => {
+    if (state.origText !== null) $("text").value = state.origText;
+    state.dirty.clear(); state.textNote = false; state.origText = null;
+    clearTimeout(state.timer); analyze(false); // исходный текст, без characteristics
+  });
   const add = $("addRow");
   if (add) add.addEventListener("click", () => {
     state.chars.push(normChar({ name: "", value: "", source: "new" }));
@@ -271,8 +297,8 @@ function bind(otherIssues) {
       const iss = otherIssues[+el.dataset.sug];
       const val = el.dataset.val;
       const row = iss.field ? state.chars.find((c) => norm(c.name) === norm(iss.field)) : null;
-      if (row) row.value = val;
-      else if (iss.field) state.chars.push(normChar({ name: iss.field, value: val, source: "ktru" }));
+      if (row) { syncText(row, "value", String(row.value ?? ""), val); row.value = val; markDirty(row); }
+      else if (iss.field) { state.chars.push(normChar({ name: iss.field, value: val, source: "ktru" })); markDirty(state.chars[state.chars.length - 1]); }
       else if (iss.value) $("text").value = $("text").value.replace(iss.value, val);
       draw();
       schedule(true);
@@ -287,6 +313,40 @@ function bind(otherIssues) {
     }));
 }
 
+/* ---------- table -> text sync ---------- */
+// Снимок textarea до первой правки таблицы (dirty: пусто -> не пусто).
+// Берётся один раз и не обновляется, даже если потом пользователь сам печатал в textarea:
+// «Сбросить правки таблицы» всегда возвращает текст, каким он был до правок таблицы.
+// Снимок сбрасывается при сбросе правок, выборе демо-кейса и «Очистить».
+function snapshotText() {
+  if (state.origText === null && state.dirty.size === 0) state.origText = $("text").value;
+}
+function markDirty(row) {
+  if (!row.name.trim()) return;
+  snapshotText();
+  state.dirty.set(norm(row.name), { name: row.name, value: row.value, unit: row.unit, source: row.source });
+}
+// Заменяет фрагмент user_input в textarea («высота 750 мм» -> «высота 900 мм»).
+// Программная запись в textarea не порождает событие input, поэтому лишнего пересчёта нет.
+function syncText(row, k, prev, next) {
+  snapshotText(); // до переписывания textarea
+  const frag = row.user_input || "";
+  const ta = $("text");
+  if (!frag || !prev || prev === next) { if (frag && prev !== next && !prev) state.textNote = true; return; }
+  const pos = frag.indexOf(prev);
+  const at = ta.value.indexOf(frag);
+  if (pos < 0 || at < 0) { state.textNote = true; refreshNote(); return; }
+  const newFrag = frag.slice(0, pos) + next + frag.slice(pos + prev.length);
+  ta.value = ta.value.slice(0, at) + newFrag + ta.value.slice(at + frag.length);
+  row.user_input = newFrag;
+}
+function refreshNote() {
+  const n = $("ovNote");
+  if (n && state.textNote && !n.textContent.includes("приоритет")) {
+    n.insertBefore(document.createTextNode(" · правки таблицы имеют приоритет над текстом "), n.querySelector("button"));
+  }
+}
+
 /* ---------- init ---------- */
 async function loadDemos() {
   const res = await fetch("/api/demo-cases");
@@ -298,7 +358,7 @@ async function loadDemos() {
     b.type = "button";
     b.className = "chip";
     b.textContent = c.title;
-    b.onclick = () => { $("text").value = c.text; $("domain").value = c.domain_hint || ""; analyze(false); };
+    b.onclick = () => { state.dirty.clear(); state.textNote = false; state.origText = null; $("text").value = c.text; $("domain").value = c.domain_hint || ""; analyze(false); };
     box.appendChild(b);
   });
 }
@@ -308,7 +368,7 @@ $("domain").addEventListener("change", () => schedule(false));
 $("clear").onclick = () => {
   clearTimeout(state.timer); state.seq++;
   $("text").value = ""; $("domain").value = "";
-  state.data = null; state.chars = [];
+  state.data = null; state.chars = []; state.dirty.clear(); state.textNote = false; state.origText = null;
   $("status").className = "status idle"; $("status").textContent = "Введите описание товара";
   $("result").className = "result empty"; $("result").textContent = "Здесь появится результат проверки";
 };
