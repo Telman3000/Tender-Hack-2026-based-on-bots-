@@ -203,3 +203,8 @@ table.batch th,table.batch td{word-break:normal;overflow-wrap:break-word;min-wid
 table.batch td.num,table.batch th:first-child{min-width:28px}
 table.batch td:nth-child(2){min-width:220px}
 table.chars th,table.chars td{word-break:normal;overflow-wrap:break-word;min-width:72px}
+
+/* подозрительные характеристики (не подходят к типу товара) */
+.tag-susp{display:inline-block;margin:3px 0 0;padding:1px 7px;border-radius:10px;background:#FFF1E0;color:#B85C00;border:1px solid #F5A623;font-size:11px;font-weight:600}
+table.chars tr.susp td{background:#FFF8EE}
+.oos-block{border-left:4px solid var(--pp-red);background:#FFF4F4}

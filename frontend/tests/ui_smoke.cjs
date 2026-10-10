@@ -52,11 +52,34 @@ async function until(fn, ms = 8000) { for (let t = 0; t < ms; t += 100) { if (fn
   console.log("x:", await run("x"));
   d.getElementById("text").value = ""; d.getElementById("run").click(); await sleep(500);
   console.log("empty:", d.getElementById("status").textContent.trim(), "|", d.getElementById("result").textContent.trim().slice(0, 60));
+  // ---- new-core features (skipped gracefully on older core)
+  console.log("oos:", await run("Бумага А4 500 листов"), "| block:", (d.getElementById("oosBlock") || {}).textContent ? d.getElementById("oosBlock").textContent.trim().slice(0, 90) : "NONE");
+  console.log("susp:", await run("Ключ гаечный 17х19 мм мощность 100 Вт"));
+  const rows = [...d.querySelectorAll("table.chars tbody tr")];
+  const si = rows.findIndex((r) => r.querySelector(".tag-susp"));
+  console.log("  suspicious row:", si, "of", rows.length, si === rows.length - 1 ? "(last)" : "", "| fill counter:", (d.getElementById("fillCounter") || {}).textContent, "| fill items:", d.querySelectorAll("#fillBlock .fill-item").length);
+  await run("<b>Стол</b> высота 27 м");
+  console.log("html hl:", [...d.querySelectorAll("#hl mark")].map((m) => m.textContent).join(" | "));
   // ---- batch
   K.showTab("batch");
-  const names = K.parseNames(K.decodeCsv(fs.readFileSync(path.join(__dirname, "..", "..", "docs", "demo_batch.csv"))));
-  await K.runBatch(names);
-  console.log("batch:", names.length, "rows;", d.getElementById("batchMode").textContent, "|", d.getElementById("summary").textContent.replace(/\s+/g, " ").trim());
+  const caps = await K.batchCaps(); console.log("caps:", JSON.stringify(caps));
+  const times = []; const obs = new w.MutationObserver(() => times.push([Date.now(), K.batch.results.filter(Boolean).length])); obs.observe(d.getElementById("batchBody"), { childList: true, subtree: true });
+  const runCsv = async (file) => {
+    const names = K.parseNames(K.decodeCsv(fs.readFileSync(file))); times.length = 0; const t = Date.now();
+    await K.runBatch(names); const ms = Date.now() - t;
+    const steps = [...new Set(times.map((x) => x[1]))];
+    const ui = J(K.batch.results.reduce((a, r) => { a[r.code_status] = (a[r.code_status] || 0) + 1; return a; }, {}));
+    const sv = K.batch.serverSummary ? J(K.batch.serverSummary.by_code_status) : null;
+    const match = sv ? Object.keys(sv).every((k) => (ui[k] || 0) === sv[k]) : "n/a";
+    console.log(`batch ${path.basename(file)}: ${names.length} rows, ${ms} ms, mode=${K.batch.mode}, progressive steps=${steps.length} (${steps.slice(0, 6).join(",")}…), ui=${JSON.stringify(ui)} server=${JSON.stringify(sv)} match=${match}`);
+    console.log("  summary:", d.getElementById("summary").textContent.replace(/\s+/g, " ").trim());
+    const exp = J(K.csvRecords(K.buildExportCsv().replace(/^\uFEFF/, ""), ";").filter((r) => r.cells.length > 1));
+    const okExp = exp.length - 1 === names.length && exp.slice(1).every((r, i) => r.cells[1] === names[i]);
+    console.log("  export rows:", exp.length - 1, "texts match:", okExp, "header:", exp[0].cells.join("|"));
+    if (!okExp) process.exitCode = 1;
+  };
+  await runCsv(path.join(__dirname, "..", "..", "docs", "demo_batch.csv"));
+  if (process.argv[3]) await runCsv(process.argv[3]);
   const bad = net.filter((n) => n[0] >= 400);
   console.log("requests:", net.length, "4xx/5xx:", bad.length, bad.map((b) => b.join(" ")).join(", "));
   console.log("batch probes:", net.filter((n) => /analyze\/batch/.test(n[2])).length, "openapi:", net.filter((n) => /openapi/.test(n[2])).length);
