@@ -82,3 +82,24 @@ def test_status_precedence():
         assert eng.analyze(AnalyzeRequest(text="Стол письменный высота 820 кг")).status == "error"
     finally:
         eng.close()
+
+
+@pytest.mark.skipif(not DB_PATH.exists(), reason="catalog.db not built yet")
+def test_frontend_row_replaces_text_row_by_canonical_name():
+    eng = CatalogEngine()
+    try:
+        text = "Ключ гаечный 170х190 мм длина 27 м"
+        first = eng.analyze(AnalyzeRequest(text=text, domain_hint="tools"))
+        assert first.status == "error"
+        canon = next(c.name for c in first.characteristics if c.user_input and c.user_input.lower().startswith("длина"))
+        for name in (canon, "длина", "Длина"):
+            res = eng.analyze(AnalyzeRequest(
+                text=text, domain_hint="tools",
+                characteristics=[{"name": name, "value": "270", "unit": "мм"}],
+            ))
+            rows = [c for c in res.characteristics if c.name == canon]
+            assert len(rows) == 1, (name, [(c.name, c.value) for c in res.characteristics])
+            assert rows[0].value == "270"
+            assert not any(i.severity == "error" and i.field in (canon, "длина") for i in res.issues)
+    finally:
+        eng.close()
