@@ -1169,6 +1169,64 @@
       },
       "expected": "out_of_scope true",
       "actual_summary": "not_found, out_of_scope false"
+    },
+    {
+      "id": "BR-074",
+      "severity": "high",
+      "category": "duplicate_chars",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body_note": "characteristics = [{\"name\":\"Поле{i}\",\"value\":\"x\"} for i in range(40)]",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Reject unknown names or single merged row",
+      "actual_summary": "40\u00d7 portal \u00ab\u041f\u043e\u043b\u00bb=x via prefix canon"
+    },
+    {
+      "id": "BR-075",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041f\u043e\u0434\u0441\u0442\u0430\u0432\u043a\u0430 \u0434\u043b\u044f \u043d\u043e\u0433\u0438 \u0433\u0438\u0442\u0430\u0440\u0438\u0441\u0442\u0430 \u043c\u0435\u0442\u0430\u043b\u043b",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "not_found/out_of_scope for non-hackathon category",
+      "actual_summary": "31.01.11.150-00000017 need_more"
+    },
+    {
+      "id": "BR-076",
+      "severity": "medium",
+      "category": "outdated_code",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439 31.01.10.000-00000006 \u0438 31.01.10.000-00000004",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Prefer cited v12 …00000006",
+      "actual_summary": "best …00000004"
+    },
+    {
+      "id": "BR-077",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv?stream=1",
+        "multipart_csv_note": "500 rows name\\n\u041c\u043e\u043b\u043e\u0442\u043e\u043a \u0441\u043b\u0435\u0441\u0430\u0440\u043d\u044b\u0439 500 \u0433"
+      },
+      "expected": "500-row stream within ~10s",
+      "actual_summary": "~15.3s wall, 501 NDJSON lines"
     }
   ]
 }

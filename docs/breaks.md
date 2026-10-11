@@ -411,10 +411,10 @@ Full JSON bodies: `qa/breaks_cases.json`. Summary:
 | severity | count |
 |----------|------:|
 | critical | 5 |
-| high | 36 |
-| medium | 31 |
+| high | 38 |
+| medium | 33 |
 | low | 3 |
-| **total** | **75** |
+| **total** | **79** |
 
 ### Round 2 (BR-033–BR-044) {#round2}
 
@@ -524,6 +524,10 @@ Full portal rebuild (`60000` STE). Copy-paste bodies: `qa/breaks_cases.json` + r
 | BR-071 | high | wrong_ktru | «**Кресло-коляска** инвалидное» → **`31.01.12.160` Кресло офисное** |
 | BR-072 | high | wrong_ktru | «**Верёвка** полипропиленовая…» + `tools` → **`28.21.11.111` Горелка промышленная** |
 | BR-073 | medium | out_of_scope | Med/PP E / food-style lines (`Парацетамол`, `Консервы`, `Лампа LED`, `Бетон`…) → `not_found`, **`out_of_scope: false`** |
+| BR-074 | high | duplicate_chars | **40× UI** `Поле0…Поле39` = `x` → **40 portal rows** canonical **`«Пол»`=`x`** (prefix collision on portal canon) |
+| BR-075 | high | wrong_ktru | Portal-style «**Подставка для ноги гитариста**» → **`31.01.11.150-00000017`** (generic furniture, not music accessory) |
+| BR-076 | medium | outdated_code | Text cites **`…00000006` and `…00000004`** → still picks **`31.01.10.000-00000004`** |
+| BR-077 | medium | performance | `POST /api/analyze/csv?stream=1` **500** rows → **~15.3 s** wall (same class as BR-063) |
 
 **CL01 JSON (official index):**
 
