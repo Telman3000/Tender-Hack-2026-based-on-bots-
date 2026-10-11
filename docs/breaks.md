@@ -14,6 +14,7 @@
 | BR-009 | fixed: «резиновый» не предлагается заменить на «бензиновый» |
 | BR-011 | fixed: нет подсказки «99999 см» |
 | BR-078, BR-079 | fixed: английский и китайский текст получают один и тот же `out_of_scope` |
+| BR-063, BR-077 | fixed: одинаковые строки пакета считаются один раз, разные — в отдельных процессах. 500 одинаковых ~0,2 с; 500 разных CSV в Docker ~2,4 с (лимит 10 с) |
 
 Остальные пункты каталога ниже — `open`.  
 **Environment:** `data/processed/catalog.db` built **2026-10-11** from official hackathon materials under `_materials/yandex_retry2/` (see Setup). Server: `uvicorn app.main:app` on `127.0.0.1:8000`.

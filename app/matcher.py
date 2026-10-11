@@ -84,6 +84,10 @@ _HAND_HEADS = ("молоток", "молотк", "отвертк", "отвёрт
 
 def power_signal(query: str, raw: list[RawKV]) -> bool:
     ws = norm(query).split()
+    manual = any(w.startswith("ручн") for w in ws)
+    electric = any(w.startswith(st) for w in ws for st in ("электр", "аккумулятор", "сетев", "пневмат"))
+    if manual and not electric:
+        return False  # «лобзик ручной» is not a power tool just because the stem is in POWER_STEMS
     if any(w.startswith(st) for w in ws for st in POWER_STEMS):
         return True
     head = ws[0] if ws else ""
@@ -104,6 +108,18 @@ class NarrowResult:
     power_tool: bool = False
     margin: float = 999.0
     anchored: bool = True  # head noun or an explicit synonym supports the winner
+
+
+def _name_words_supported(entry_name: str, query: str) -> bool:
+    """False when the KTRU title adds a word the description never said («игровой», «вентури»)."""
+    q = [w for w in norm(query).split() if len(w) >= 4]
+    for w in norm(entry_name).split():
+        if len(w) < 5 or w in {"для", "под"}:
+            continue
+        if any(w.startswith(x[:5]) or x.startswith(w[:5]) for x in q):
+            continue
+        return False
+    return True
 
 
 def score_name(query: str, candidate: str) -> float:
@@ -163,7 +179,10 @@ def correct_query(cat: Catalog, query: str, domain: str | None, text: str = "") 
     seen: set[str] = set()
     for k, w in enumerate(query.split()):
         brand = (not re.fullmatch(r"[А-Яа-яЁё\-]+", w)) or (k > 0 and w[:1].isupper()) or (len(w) > 1 and w.isupper())
-        fix = None if brand else _typo_fix(cat, w, domain, 80)
+        # First word: «Малаток» is two substitutions from «молоток» (ratio ~71), still a typo.
+        fix = None if brand else _typo_fix(cat, w, domain, 70 if k == 0 else 80)
+        if fix and k == 0 and norm(w)[:1] != norm(fix)[:1]:
+            fix = None
         out.append(fix or w)
         seen.add(norm(w))
         if fix:
@@ -219,14 +238,19 @@ def narrow_ktru(
 
     query, typo_issues = correct_query(cat, product, domain, text)
     res.issues.extend(typo_issues)
-    # enrich by closest portal STE names (sorted tokens -> deterministic)
+    # Latin junk («DROP TABLE») must not steer the name match.
+    kept_words = [w.strip("'\"«»`") for w in query.split() if not re.fullmatch(r"[A-Za-z]{2,}", w)]
+    kept_words = [w for w in kept_words if w]
+    if kept_words:
+        query = " ".join(kept_words)
+    # Enrich only with words shared by several portal cards. One card's extra words
+    # («дошколенок» beside «стол») used to pull the code off the product.
     ste = cat.ste_names.get(domain) or []
     if ste and len(norm(query)) >= 3:
         hits = process.extract(norm(query), ste, scorer=fuzz.token_set_ratio, limit=3, score_cutoff=80)
-        extra = []
-        for name, _sc, _i in hits:
-            extra.extend(sorted(tokens(name) - tokens(query))[:3])
-        enriched = query + " " + " ".join(dict.fromkeys(extra)) if extra else query
+        sets = [tokens(name) - tokens(query) for name, _sc, _i in hits]
+        extra = sorted(sets[0].intersection(*sets[1:]))[:3] if len(sets) >= 2 else []
+        enriched = query + " " + " ".join(extra) if extra else query
     else:
         enriched = query
     res.query = query
@@ -239,6 +263,8 @@ def narrow_ktru(
     head_q = norm(query).split()[0] if norm(query) else ""
     if domain in ("tools", None) and not power_signal(product, raw):
         hsyn = next((v for k, v in HAND_SYNONYMS.items() if head_q.startswith(k)), None)
+        if hsyn is None and head_q.startswith("лобзик"):
+            hsyn = "пила ручная"  # в КТРУ нет «лобзика ручного», ближайшая позиция — пила ручная
         if hsyn:
             synonym_used = True
             s1 = np.maximum(s1, _scores(hsyn, names, toks) + 20.0
@@ -339,7 +365,10 @@ def narrow_ktru(
             label_cnt[sp.name] += 1
             r = check_value(sp, kv.value, kv.unit, domain, emit=False)
             if r.ok:
-                c[0] += 8 if (sp.enums or sp.is_numeric) else 4
+                # «Стол» alone must not be promoted to «стол игровой» by a matching size.
+                bare = len([w for w in norm(query).split() if len(w) >= 4]) <= 1
+                if not bare or _name_words_supported(c[1].name, query):
+                    c[0] += 8 if (sp.enums or sp.is_numeric) else 4
                 c[2].append(sp.name)
                 ok_c.append(c)
             else:

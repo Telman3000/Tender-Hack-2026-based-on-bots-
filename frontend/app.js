@@ -122,7 +122,8 @@ async function analyze(withChars, fromButton) {
 }
 
 
-const EMPTY_HINT = "Введите описание товара, например: «Кресло офисное обивка ткань цвет черный высота 1080 мм»";
+const IDEAL_QUERY = "Кресло офисное, обивка ткань, цвет черный, высота 1080 мм, ширина 650 мм, глубина 450 мм";
+const EMPTY_HINT = "Напишите название и характеристики через запятую. Образец — под полем ввода.";
 function showEmpty(extra) {
   clearTimeout(state.timer); state.seq++;
   state.data = null; state.chars = []; resetOverrides(); state.lastKey = null;
@@ -672,6 +673,12 @@ $("clear").onclick = () => {
   drawHighlight();
 };
 loadDemos().catch(console.error);
+$("ideal").onclick = () => {
+  resetOverrides(); state.lastKey = null;
+  $("text").value = IDEAL_QUERY;
+  $("domain").value = "furniture";
+  analyze(false);
+};
 
 /* ---------- вкладки ---------- */
 function showTab(tab) {

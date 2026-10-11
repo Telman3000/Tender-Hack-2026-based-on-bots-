@@ -22,6 +22,7 @@ def _stem(w: str) -> str:
 
 # description word -> KTRU value word
 _VALUE_SYNONYMS = {"ткань": "текстиль", "тканевая": "текстиль", "тканевый": "текстиль",
+                   "тканевой": "текстиль", "ткани": "текстиль", "тканью": "текстиль",
                    "кожзам": "искусственная", "экокожа": "экокожа", "аккумуляторная": "аккумуляторных",
                    "аккумуляторный": "аккумуляторных"}
 
@@ -47,6 +48,9 @@ def _part_windows(text: str) -> dict[str, list[str]]:
     for i, w in enumerate(ws):
         for p in _PARTS:
             if w.startswith(p):
+                # «тканевая обивка»: the material word stands before the part
+                if i > 0 and ws[i - 1] not in _STOP:
+                    out.setdefault(p, []).append(ws[i - 1])
                 out.setdefault(p, []).extend(ws[i + 1:i + 4])
     return out
 
@@ -292,6 +296,8 @@ def _enum_from_text(spec, stems: dict[str, str]) -> tuple[str, str] | None:
         hit = [stems[_stem(w)] for w in ws if _stem(w) in stems]
         if not hit:
             continue
+        if len(ws) >= 2 and len(hit) == 1 and len(hit[0]) < 6:
+            continue  # «стол» is not «стол для переговоров»; a long word still counts
         sc = len(hit) / len(ws) + 0.01 * len(hit)
         if sc > best_sc + 1e-9:
             best, best_sc, tie = (e, " ".join(hit)), sc, False
@@ -321,6 +327,13 @@ def unify_characteristics(
         user_input = f"{item.name} {item.value}{' ' + item.unit if item.unit else ''}".strip()
         value = (item.value or "").strip()
         unit = canon_unit(item.unit) or item.unit
+        if getattr(item, "bound", None) and value:
+            shown = f"{item.bound} {value} {unit or ''}".strip()
+            issues.append(Issue.make(
+                "negation", field=item.name, value=shown, severity="warning",
+                message=f"«{item.name}»: «{shown}» — это граница, точное значение не задано",
+            ))
+            continue
         spec = cat.find_spec(best, item.name) if best else None
         if spec is None and best is not None:
             # synonyms: «вес» and «масса» land on the same KTRU characteristic («Масса молотка»)
@@ -349,13 +362,13 @@ def unify_characteristics(
             pc.source = CharSource.KTRU
             pc.required = spec.required
             pc.allowed = spec.allowed_enums()
+            nu = None
             if is_numeric_spec(spec):
                 pc.min, pc.max, nu = numeric_view(spec, domain)
-                pc.unit = nu or pc.unit
+                if not value:
+                    pc.unit = nu or pc.unit
             pc.confidence = 0.95
             pc.notes = f"Характеристика КТРУ {best.code}"
-            if spec.is_numeric and spec.unit:
-                pc.unit = canon_unit(spec.unit) or spec.unit
             if value:
                 r = check_value(spec, value, item.unit, domain)
                 if r.issue:
@@ -363,7 +376,14 @@ def unify_characteristics(
                 if r.ok:
                     if corrections is not None and r.converted and item.unit:
                         corrections.append(("unit", spec.name, f"{value} {item.unit}", f"{r.value} {r.unit}"))
-                    pc.value, pc.unit = r.value, (r.unit or pc.unit)
+                    pc.value, pc.unit = r.value, (r.unit or nu or pc.unit)
+                else:
+                    user_u = item.unit or unit
+                    crossed = bool(user_u and nu and dimension(canon_unit(user_u)) and dimension(canon_unit(nu))
+                                   and dimension(canon_unit(user_u)) != dimension(canon_unit(nu)))
+                    pc.unit = user_u if crossed else (nu or user_u)
+            elif spec.is_numeric and spec.unit:
+                pc.unit = canon_unit(spec.unit) or spec.unit
             used.add(spec.name.lower())
         else:
             canon = CHAR_ALIASES.get(item.name.lower().strip())

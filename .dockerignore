@@ -1,0 +1,6 @@
+.git
+.venv
+_materials
+**/__pycache__
+**/*.pyc
+data/processed/*.db

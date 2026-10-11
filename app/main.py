@@ -3,9 +3,11 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import atexit
 import csv
 import io
 import json
+import multiprocessing as mp
 import os
 import time
 from collections import Counter
@@ -30,6 +32,7 @@ async def lifespan(_: FastAPI):
     global engine
     engine = CatalogEngine()
     yield
+    _shutdown_pool()
     if engine:
         engine.close()
 
@@ -59,6 +62,10 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
 
 BATCH_MAX = 500
 BATCH_WORKERS = max(4, min(8, os.cpu_count() or 4))
+# Уникальных строк больше этого порога считаем в отдельных процессах: цикл
+# сопоставления держит GIL, и 8 потоков на 500 разных строках не укладываются в 10 с.
+_PROCESS_BATCH = 24
+_POOL: mp.pool.Pool | None = None
 _NAME_HEADERS = {"name", "names", "наименование", "наименования", "название", "товар", "text", "query",
                  "описание", "наименование товара", "наименование сте"}
 
@@ -104,10 +111,71 @@ def _summary(results: list[dict], elapsed_ms: float) -> dict:
     }
 
 
-def _run(items: list[dict], hint: str | None):
-    """Yields results in input order; rows are analysed by a small thread pool on the shared engine."""
+def _shutdown_pool() -> None:
+    global _POOL
+    pool = _POOL
+    _POOL = None
+    if pool is not None:
+        pool.close()
+        pool.join()
+
+
+def _batch_pool() -> mp.pool.Pool:
+    global _POOL
+    if _POOL is None:
+        n = max(2, min(4, os.cpu_count() or 2))
+        _POOL = mp.get_context("fork").Pool(n)
+    return _POOL
+
+
+def _one_job(payload: tuple[dict, str | None]) -> dict:
+    return _one(payload[0], payload[1])
+
+
+atexit.register(_shutdown_pool)
+
+
+def _run_threads(items: list[dict], hint: str | None):
     with ThreadPoolExecutor(BATCH_WORKERS) as ex:
         yield from ex.map(lambda it: _one(it, hint), items)
+
+
+def _run(items: list[dict], hint: str | None):
+    """Yields results in input order.
+
+    Одинаковый текст в одном пакете считается один раз. Много разных строк
+    отдаётся пулу процессов (каталог уже в памяти родителя, fork его копирует).
+    """
+    index_of: dict[str, int] = {}
+    unique: list[dict] = []
+    slots: list[int] = []
+    for it in items:
+        text = it.get("text") or ""
+        if text.strip() and text in index_of:
+            slots.append(index_of[text])
+            continue
+        if text.strip():
+            index_of[text] = len(unique)
+        slots.append(len(unique))
+        unique.append(it)
+    if len(unique) >= _PROCESS_BATCH and engine is not None:
+        try:
+            computed = list(_batch_pool().imap(
+                _one_job, [(it, hint) for it in unique], chunksize=8))
+        except Exception:
+            _shutdown_pool()
+            computed = list(_run_threads(unique, hint))
+    else:
+        computed = list(_run_threads(unique, hint))
+    for it, src_i in zip(items, slots):
+        src = computed[src_i]
+        if src.get("id") == it.get("id") and src.get("text") == (it.get("text") or ""):
+            yield src
+            continue
+        copied = dict(src)
+        copied["id"] = it.get("id")
+        copied["text"] = it.get("text") or ""
+        yield copied
 
 
 def _wants_stream(request: Request) -> bool:
@@ -219,7 +287,7 @@ def demo_cases():
     return [
         {
             "title": "Стол офисный (полный)",
-            "text": "Стол офисный ДСП высота 750 мм ширина 1200 мм глубина 600 мм цвет серый",
+            "text": "Стол офисный, ДСП, высота 750 мм, ширина 1200 мм, глубина 600 мм, цвет серый",
             "domain_hint": "furniture",
         },
         {
@@ -229,12 +297,12 @@ def demo_cases():
         },
         {
             "title": "Стул",
-            "text": "Стул на металлическом каркасе цвет черный материал кожа",
+            "text": "Стул на металлическом каркасе, цвет черный, материал кожа",
             "domain_hint": "furniture",
         },
         {
             "title": "Рюкзак",
-            "text": "Рюкзак школьный цвет синий материал полиэстер объем 28 л",
+            "text": "Рюкзак школьный, цвет синий, материал полиэстер, объем 28 л",
             "domain_hint": "clothing",
         },
         {

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Помощник заполнения характеристик — Портал поставщиков</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20261010j" />
-  <link rel="stylesheet" href="/static/styles.css?v=20261010j" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261011b" />
 </head>
 <body>
   <header class="top">
@@ -22,10 +22,8 @@
   </header>
   <nav class="nav">
     <div class="nav-inner">
-      <span class="muted-link nav-item" style="padding:12px 14px">Каталог</span>
       <button type="button" class="tab active" data-tab="single" id="tabSingle">Создание СТЕ</button>
       <button type="button" class="tab" data-tab="batch" id="tabBatch">Пакетная проверка (CSV)</button>
-      <span class="muted-link nav-item" style="padding:12px 14px">Закупки</span>
     </div>
   </nav>
   <div class="crumbs"><a href="#">Главная</a><span class="sep">›</span><a href="#">Каталог продукции</a><span class="sep">›</span><span id="crumbLast">Создание СТЕ</span></div>
@@ -37,7 +35,22 @@
       <p class="lead">Введите описание в свободной форме — сервис выделит характеристики, проверит их по КТРУ и сузит список кодов. Таблицу можно редактировать: результат пересчитается автоматически.</p>
 
       <label class="lbl" for="text">Текст</label>
-      <textarea id="text" rows="5" placeholder="Например: стол офисный, ширина 1200 мм, глубина 750 мм, материал ЛДСП"></textarea>
+      <textarea id="text" rows="5" placeholder="Название, потом характеристики через запятую"></textarea>
+      <button type="button" class="query-hint" id="ideal">
+        <span class="query-hint-head">
+          <span class="query-hint-kicker">Образец запроса</span>
+          <span class="query-hint-action">Подставить</span>
+        </span>
+        <span class="query-hint-recipe">Сначала название, затем характеристики через запятую.</span>
+        <span class="query-hint-sample">
+          <span class="q-name">Кресло офисное</span>
+          <span class="q-part">обивка ткань</span>
+          <span class="q-part">цвет черный</span>
+          <span class="q-part">высота 1080 мм</span>
+          <span class="q-part">ширина 650 мм</span>
+          <span class="q-part">глубина 450 мм</span>
+        </span>
+      </button>
       <div id="hl" class="hl-preview" hidden aria-label="Проблемные фрагменты текста"></div>
 
       <div class="row">
@@ -87,6 +100,6 @@
 
   <footer class="foot">Источники характеристик: <span class="badge ktru">КТРУ</span> <span class="badge portal">Портал</span> <span class="badge new">Новая</span></footer>
 
-  <script src="/static/app.js?v=20261010j"></script>
+  <script src="/static/app.js?v=20261011b"></script>
 </body>
 </html>
