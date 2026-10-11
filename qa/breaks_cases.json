@@ -247,6 +247,36 @@
       },
       "expected": "mm/cm disambiguation for furniture height",
       "actual_summary": "Высота 1.10 m"
+    },
+    {
+      "id": "BR-017",
+      "severity": "medium",
+      "category": "typo",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Шкав для одежды металлический",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "typo issue Шкав → Шкаф",
+      "actual_summary": "no typo; product_guess keeps Шкав"
+    },
+    {
+      "id": "BR-018",
+      "severity": "high",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской л08-КБР размер 48-50 рост 170-176 ткань смесовая",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "CL01 clean — no complete card with new Рост",
+      "actual_summary": "ok + complete + new_property Рост"
     }
   ]
 }

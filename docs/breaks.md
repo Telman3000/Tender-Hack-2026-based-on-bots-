@@ -34,6 +34,8 @@
 | [BR-014](#br-014) | low | typo | «на колесах» → «колесная» false typo on valid phrase |
 | [BR-015](#br-015) | medium | fill | `fill: null` for positions that still expose KTRU characteristics (e.g. electric tool group) |
 | [BR-016](#br-016) | medium | unit_guess | «высота 1.10» parsed as **1.10 m** not mm/cm disambiguation for furniture |
+| [BR-017](#br-017) | medium | typo | QA E26 «Шкав» not corrected; product name keeps typo |
+| [BR-018](#br-018) | high | card_status | QA CL01 (clean): `ok`+`complete` with «Рост» as `new` |
 
 ---
 
@@ -320,15 +322,49 @@ name
 
 ---
 
+### BR-017
+
+- **severity:** medium  
+- **category:** typo  
+
+**Input:**
+
+```json
+{"text": "Шкав для одежды металлический", "domain_hint": "furniture"}
+```
+
+**Expected (QA E26):** `typo` issue suggesting «Шкаф»; normalized product name.
+
+**Actual:** `product_guess` unchanged «Шкав…», no `typo` issue; only `missing` warnings; `best_ktru.code: 31.01.11.121-00000001`.
+
+---
+
+### BR-018
+
+- **severity:** high  
+- **category:** card_status / new_property  
+
+**Input:**
+
+```json
+{"text": "Костюм рабочий мужской л08-КБР размер 48-50 рост 170-176 ткань смесовая", "domain_hint": "clothing"}
+```
+
+**Expected (QA CL01 clean):** Map «рост» to clothing size KTRU fields; `card_status` not `complete` while `new_property` present.
+
+**Actual:** Same as BR-004 pattern: `status: ok`, `card_status: complete`, «Рост» `source: new`.
+
+---
+
 ## Count by severity
 
 | severity | count |
 |----------|------:|
 | critical | 2 |
-| high | 5 |
-| medium | 8 |
+| high | 6 |
+| medium | 9 |
 | low | 1 |
-| **total** | **16** |
+| **total** | **18** |
 
 ## Top 10 most damaging
 
@@ -342,6 +378,8 @@ name
 8. **BR-008** — Demo drill power 10.8 W accepted without sanity check.  
 9. **BR-009** — Dangerous typo suggestion (rubber → gasoline).  
 10. **BR-011** — Nonsense auto-fix suggestion (99999 см).
+
+*(BR-017 typo miss and BR-018 CL01 complete+new are additional high/medium findings.)*
 
 ---
 
