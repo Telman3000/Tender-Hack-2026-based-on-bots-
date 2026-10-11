@@ -1227,6 +1227,51 @@
       },
       "expected": "500-row stream within ~10s",
       "actual_summary": "~15.3s wall, 501 NDJSON lines"
+    },
+    {
+      "id": "BR-078",
+      "severity": "medium",
+      "category": "mixed_language",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Office desk laminate 1200mm",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "31.01.10 desk or out_of_scope",
+      "actual_summary": "not_found, out_of_scope false"
+    },
+    {
+      "id": "BR-079",
+      "severity": "high",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u529e\u516c\u684c 1200\u6beb\u7c73",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Consistent with BR-078 (both out_of_scope or both attempt match)",
+      "actual_summary": "not_found, out_of_scope true"
+    },
+    {
+      "id": "BR-080",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0411\u043e\u0442\u0438\u043d\u043a\u0438 \u0440\u0430\u0431\u043e\u0447\u0438\u0435 \u043a\u043e\u0441\u0442\u044e\u043c \u043a\u043e\u043c\u043f\u043b\u0435\u043a\u0442",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Boots or suit KTRU / ambiguous bundle",
+      "actual_summary": "15.20.32.126-00000001 \u0432\u0438\u0431\u0440\u043e\u0437\u0430\u0449\u0438\u0442\u043d\u0430\u044f \u043e\u0431\u0443\u0432\u044c"
     }
   ]
 }

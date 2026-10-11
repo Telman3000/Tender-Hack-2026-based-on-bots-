@@ -411,10 +411,10 @@ Full JSON bodies: `qa/breaks_cases.json`. Summary:
 | severity | count |
 |----------|------:|
 | critical | 5 |
-| high | 38 |
-| medium | 33 |
+| high | 39 |
+| medium | 36 |
 | low | 3 |
-| **total** | **79** |
+| **total** | **83** |
 
 ### Round 2 (BR-033–BR-044) {#round2}
 
@@ -528,6 +528,9 @@ Full portal rebuild (`60000` STE). Copy-paste bodies: `qa/breaks_cases.json` + r
 | BR-075 | high | wrong_ktru | Portal-style «**Подставка для ноги гитариста**» → **`31.01.11.150-00000017`** (generic furniture, not music accessory) |
 | BR-076 | medium | outdated_code | Text cites **`…00000006` and `…00000004`** → still picks **`31.01.10.000-00000004`** |
 | BR-077 | medium | performance | `POST /api/analyze/csv?stream=1` **500** rows → **~15.3 s** wall (same class as BR-063) |
+| BR-078 | medium | mixed_language | **`Office desk laminate 1200mm`** + `furniture` → `not_found`, **`out_of_scope: false`** |
+| BR-079 | high | out_of_scope | **`办公桌 1200毫米`** → `not_found`, **`out_of_scope: true`** while English desk (BR-078) is false — **inconsistent language UX** |
+| BR-080 | high | wrong_ktru | «**Ботинки рабочие костюм комплект**» → **`15.20.32.126-00000001`** vibro **shoe**, not suit/boots sanity |
 
 **CL01 JSON (official index):**
 
