@@ -831,6 +831,22 @@
       },
       "expected": "Skip duplicate header or analyze Стол only",
       "actual_summary": "row 'name' transliterated to наме, out_of_scope row"
+    },
+    {
+      "id": "BR-051",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body_note": "text = \"Стол \" + \"x\"*20000",
+        "body": {
+          "text": "<generate: \"Стол \" + \"x\"*20000>",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "<=100ms",
+      "actual_summary": "~248ms elapsed"
     }
   ]
 }

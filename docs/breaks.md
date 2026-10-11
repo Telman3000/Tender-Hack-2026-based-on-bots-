@@ -413,7 +413,7 @@ Full JSON bodies: `qa/breaks_cases.json`. Summary:
 |----------|------:|
 | critical | 4 |
 | high | 23 |
-| medium | 22 |
+| medium | 23 |
 | low | 3 |
 | **total** | **50** |
 
@@ -483,6 +483,19 @@ name
 name
 Стол
 ```
+
+### BR-051
+
+- **severity:** medium  
+- **category:** performance  
+
+**Input:** `{"text": "Стол " + "x" * 20000, "domain_hint": "furniture"}`
+
+**Expected:** Single analyze ≤100 ms (task brief).
+
+**Actual:** `debug.elapsed_ms` ≈ **248 ms** (HTTP 200).
+
+---
 
 ## Top 10 most damaging
 
