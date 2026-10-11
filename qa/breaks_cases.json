@@ -285,10 +285,238 @@
       "request": {
         "method": "SCRIPT",
         "path": "scripts/load_test.py",
-        "args": ["--url", "http://127.0.0.1:8000", "--n", "100", "--concurrency", "50"]
+        "args": [
+          "--url",
+          "http://127.0.0.1:8000",
+          "--n",
+          "100",
+          "--concurrency",
+          "50"
+        ]
       },
       "expected": "p50 <= 100 ms under concurrency",
       "actual_summary": "p50 ~232 ms, p95 ~306 ms, all HTTP 200"
+    },
+    {
+      "id": "BR-020",
+      "severity": "critical",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Молоток слесарный 600 г",
+          "domain_hint": "tools",
+          "characteristics": [
+            {
+              "name": "Напряжение",
+              "value": "18",
+              "unit": "В"
+            }
+          ]
+        }
+      },
+      "expected": "25.73 hammer",
+      "actual_summary": "28.24.10.000-00000001 ok complete"
+    },
+    {
+      "id": "BR-021",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Отвертка шлицевая 6 мм",
+          "domain_hint": "tools",
+          "characteristics": [
+            {
+              "name": "Частота вращения",
+              "value": "3000",
+              "unit": "об/мин"
+            }
+          ]
+        }
+      },
+      "expected": "hand screwdriver",
+      "actual_summary": "28.24.11.000-00000030 Шуруповерт"
+    },
+    {
+      "id": "BR-022",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Лобзик ручной",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "jigsaw",
+      "actual_summary": "28.24.11.000-00000010 Фрезer"
+    },
+    {
+      "id": "BR-023",
+      "severity": "critical",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Шкаф для одежды металлический 1800х600х2000 мм",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "31.01 wardrobe",
+      "actual_summary": "25.72.14.120-00000001 window hardware"
+    },
+    {
+      "id": "BR-024",
+      "severity": "medium",
+      "category": "new_property",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный | Высота 750 мм | Ширина 1200 мм | цвет серый",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "no junk new",
+      "actual_summary": "new Стол=письменный"
+    },
+    {
+      "id": "BR-025",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Скрипка деревянная для оркестра",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "out_of_scope",
+      "actual_summary": "25.71.13 pencil sharpener"
+    },
+    {
+      "id": "BR-026",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Набор бит PH2 для аккумуляторного шуруповерта отвертка",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "driver/bits",
+      "actual_summary": "25.71.11 knife set"
+    },
+    {
+      "id": "BR-027",
+      "severity": "high",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий размер 44",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "incomplete",
+      "actual_summary": "ok complete 14.12.10"
+    },
+    {
+      "id": "BR-028",
+      "severity": "high",
+      "category": "new_property",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской",
+          "domain_hint": "clothing",
+          "characteristics": [
+            {
+              "name": "Рост",
+              "value": "170-176"
+            }
+          ]
+        }
+      },
+      "expected": "KTRU рост",
+      "actual_summary": "new Рост ok complete"
+    },
+    {
+      "id": "BR-029",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Отвертка",
+          "domain_hint": "tools",
+          "characteristics": [
+            {
+              "name": "Тип",
+              "value": "аккумуляторная"
+            }
+          ]
+        }
+      },
+      "expected": "power tool",
+      "actual_summary": "25.73.30 hand ok complete"
+    },
+    {
+      "id": "BR-030",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол; письменный; ЛДСП высота 750",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "31.01.10 desk",
+      "actual_summary": "31.09.10 admin desk"
+    },
+    {
+      "id": "BR-031",
+      "severity": "medium",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Ключ гаечный размер 17х19 мм",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "17x19 key",
+      "actual_summary": "25.73.30.171 разводной"
+    },
+    {
+      "id": "BR-032",
+      "severity": "medium",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Дрель ударная сетевая мощность 800 Вт",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "out_of_scope",
+      "actual_summary": "not_found card complete"
     }
   ]
 }

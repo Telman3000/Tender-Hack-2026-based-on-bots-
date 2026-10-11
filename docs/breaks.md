@@ -37,6 +37,19 @@
 | [BR-017](#br-017) | medium | typo | QA E26 «Шкав» not corrected; product name keeps typo |
 | [BR-018](#br-018) | high | card_status | QA CL01 (clean): `ok`+`complete` with «Рост» as `new` |
 | [BR-019](#br-019) | medium | performance | 50 concurrent analyzes: p50 ≈232 ms (>>100 ms single-request budget) |
+| [BR-020](#extended) | critical | wrong_ktru | User «18 В» on hammer → electric tool KTRU, `ok`+`complete` |
+| [BR-021](#extended) | high | wrong_ktru | «об/мин» on screwdriver → шуруповерт 28.24 |
+| [BR-022](#extended) | high | wrong_ktru | «Лобзик ручной» → фрезer 28.24 |
+| [BR-023](#extended) | critical | wrong_ktru | Wardrobe + `domain_hint: tools` → window hardware 25.72 |
+| [BR-024](#extended) | medium | new_property | Pipe-separated text → junk `new` char «Стол»=«письменный» |
+| [BR-025](#extended) | high | wrong_ktru | Violin + tools hint → pencil sharpener 25.71 |
+| [BR-026](#extended) | high | wrong_ktru | Bit set text → kitchen knife set 25.71 |
+| [BR-027](#extended) | high | card_status | Suit size 44 → `ok`+`complete` (footwear-sized) |
+| [BR-028](#extended) | high | new_property | UI «Рост» still `new` with `complete` |
+| [BR-029](#extended) | high | wrong_ktru | «Отвертка» + Тип аккумуляторная → hand-tool KTRU, `ok` |
+| [BR-030](#extended) | high | wrong_ktru | Semicolons in text → «Стол администратора» not письменный |
+| [BR-031](#extended) | medium | wrong_ktru | «17х19» → разводной wrench not fixed key |
+| [BR-032](#extended) | medium | out_of_scope | Drill + `domain_hint: clothing` → `not_found`, `card_status: complete` |
 
 ---
 
@@ -357,29 +370,6 @@ name
 
 ---
 
-## Count by severity
-
-| severity | count |
-|----------|------:|
-| critical | 2 |
-| high | 6 |
-| medium | 10 |
-| low | 1 |
-| **total** | **19** |
-
-## Top 10 most damaging
-
-1. **BR-001** — Wrong KTRU (machine table) for office desk via `domain_hint: tools`.  
-2. **BR-003** — CSV comma name → wrong furniture KTRU (conference table).  
-3. **BR-004** — Declares `ok` + `complete` card with invented «Рост».  
-4. **BR-006** — Wrong footwear KTRU for rubber boots (H09).  
-5. **BR-007** — Wrong халат line (14.14 vs 14.12) on minimal query.  
-6. **BR-002** — Misleading `not_found` instead of out-of-scope on domain abuse.  
-7. **BR-005** — Fabric composition as NEW property with `status=ok`.  
-8. **BR-008** — Demo drill power 10.8 W accepted without sanity check.  
-9. **BR-009** — Dangerous typo suggestion (rubber → gasoline).  
-10. **BR-011** — Nonsense auto-fix suggestion (99999 см).
-
 ### BR-019
 
 - **severity:** medium  
@@ -395,7 +385,50 @@ name
 
 ---
 
-*(BR-017–BR-019 are additional findings beyond the initial 16.)*
+### Extended catalog (verified BR-020–BR-032) {#extended}
+
+Full JSON bodies: `qa/breaks_cases.json`. Summary:
+
+| id | Input (abbrev.) | Expected | Actual (code / status) |
+|----|-----------------|----------|-------------------------|
+| BR-020 | Молоток + char Напряжение 18 В | 25.73 hammer | **28.24.10.000-00000001**, `ok`/`complete` |
+| BR-021 | Отвертка + 3000 об/мин | 25.73 hand | **28.24.11.000-00000030** Шуруповерт |
+| BR-022 | Лобзик ручной | 28.24 jigsaw | **28.24.11.000-00000010** Фрезer |
+| BR-023 | Шкаф… + hint tools | 31.01 wardrobe | **25.72.14.120-00000001** window hardware |
+| BR-024 | Стол письменный \| Высота… | no junk new rows | `new` «Стол»=«письменный» |
+| BR-025 | Скрипка + hint tools | out_of_scope | **25.71.13** pencil sharpener |
+| BR-026 | Набор бит… отвертка | bit/driver | **25.71.11** knife set |
+| BR-027 | Костюм рабочий размер 44 | incomplete / size sanity | `ok`/`complete` 14.12.10.* |
+| BR-028 | UI characteristics Рост 170-176 | KTRU height | `new` Рост, `ok`/`complete` |
+| BR-029 | Отвертка + Тип аккумуляторная | power tool or reject | 25.73 hand tool, `ok` |
+| BR-030 | Стол; письменный; ЛДСП… | 31.01.10 desk | **31.09.10** admin desk |
+| BR-031 | Ключ гаечный 17х19 | fixed 17×19 | **25.73.30.171** разводной |
+| BR-032 | Дрель 800 Вт + hint clothing | out_of_scope | `not_found`, **`card_status: complete`** |
+
+---
+
+## Count by severity
+
+| severity | count |
+|----------|------:|
+| critical | 4 |
+| high | 15 |
+| medium | 12 |
+| low | 1 |
+| **total** | **32** |
+
+## Top 10 most damaging
+
+1. **BR-020** — Hand hammer + «18 В» → electric-tool KTRU with `ok`/`complete`.  
+2. **BR-001** — Office desk + `domain_hint: tools` → machine-table 28.41 KTRU.  
+3. **BR-023** — Wardrobe + tools hint → window hardware 25.72.  
+4. **BR-003** — CSV comma in name → conference table instead of writing desk.  
+5. **BR-004 / BR-018 / BR-028** — `ok`+`complete` while «Рост» stays `new_property`.  
+6. **BR-026** — Bit/driver wording → kitchen knife set KTRU.  
+7. **BR-025** — Violin under tools hint → pencil sharpener (not out-of-scope).  
+8. **BR-006** — Rubber boots → metal-toe shoe code (H09).  
+9. **BR-021** — Screwdriver + RPM unit alone → шуруповерт classification.  
+10. **BR-009** — Typo suggestion «резиновый» → «бензиновый».
 
 ---
 
