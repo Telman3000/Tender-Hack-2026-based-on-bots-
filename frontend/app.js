@@ -319,6 +319,8 @@ function fillText(data, filled, total) {
   const f = data.fill;
   const clean = (t) => t.replace(/\s*\(\s*обязательных\s+0\s*из\s*0\s*\)/i, "").trim();
   const zero = (t) => /(^|\D)0\s*из\s*0(\D|$)/.test(clean(t));
+  if (f && typeof f === "object" && f.total != null && f.filled != null && f.total > 0)
+    return `${f.filled} из ${f.total} заполнено`;
   if (f && typeof f === "object" && typeof f.text === "string" && !zero(f.text) && f.total !== 0) return clean(f.text) || null;
   if (typeof f === "string" && f.trim() && !zero(f)) return clean(f);
   if (f && typeof f === "object" && f.total === 0) return null;
@@ -330,7 +332,7 @@ function fillText(data, filled, total) {
     if (typeof f.text === "string" && f.text.trim()) return f.text.trim();
     if (f.total != null) return `Заполнено ${f.filled ?? 0} из ${f.total}`;
   }
-  return `${filled} из ${total}`;
+  return total ? `${filled} из ${total} заполнено` : null;
 }
 function plural(n, one, few, many) {
   const m10 = n % 10, m100 = n % 100;

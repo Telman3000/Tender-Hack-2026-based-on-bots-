@@ -6,6 +6,7 @@ const PptxGenJS = require('pptxgenjs');
 const DOCS = path.join(__dirname, '..');
 const SRC = fs.existsSync(path.join(DOCS, 'src', 'process.png')) ? path.join(DOCS, 'src') : DOCS;
 const M = require('./metrics.js');
+function plural(n, one, few, many) { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 10 || b >= 20) ? few : many; }
 
 let BLUE = '264B82';     // dark portal blue
 let BRIGHT = '1E88E5';   // bright accent blue
@@ -216,7 +217,7 @@ function sResults(p, n, t) {
     ['Внесённые ошибки пойманы**', v(ie.caught)],
     ['Время ответа: медиана / p95*', v(M.latencyMedian + ' / ' + M.latencyP95)],
     ['Нагрузка: параллельных запросов', v(M.loadParallel + ' без ошибок')],
-    ['Справочник КТРУ (весь архив)', v(M.ktruItems + ' позиция')],
+    ['Справочник КТРУ (весь архив)', v(M.ktruItems + ' ' + plural(+String(M.ktruItems).replace(/\D/g, ''), 'позиция', 'позиции', 'позиций'))],
     ['Автотесты pytest', v(M.autotests)],
     ['Чистая сборка индекса', v(M.indexBuild)]];
   s.addTable(rows, { x: 6.75, y: 2.5, w: 5.75, colW: [3.25, 2.5], rowH: 0.33, fontFace: FONT, fontSize: 12, color: INK, border: { type: 'solid', pt: 0.75, color: 'D5DCE6' }, valign: 'middle', margin: 0.06 });
@@ -401,10 +402,10 @@ function fFill(p, n, t) {
   const fsz = pngSize(path.join(SRC, 'screens', 'fill_block.png')), fh = 2.38, fw = fh * fsz.w / fsz.h;
   s.addImage({ path: path.join(SRC, 'screens', 'fill_block.png'), x: 0.85 + (5.75 - fw) / 2, y: 4.07, w: fw, h: fh });
   card(s, [6.83, 1.85, 5.65, 4.75]);
-  label(s, 'Пакетная проверка (CSV): ' + F.batch.rows + ' строк ≈ ' + F.batch.time.replace('≈', '').trim(), [7.03, 1.97, 5.3, 0.3]);
+  label(s, 'Пакетная проверка (CSV): ' + F.batch.rows + ' строк за ' + F.batch.time, [7.03, 1.97, 5.3, 0.3]);
   const bsz = pngSize(path.join(SRC, 'screens', 'batch_view.png')), bw = 5.25, bh = bw * bsz.h / bsz.w;
-  // crop starts at the «Обработано …» line (≈462 px of 1425-px-wide screenshot)
-  s.addImage({ path: path.join(SRC, 'screens', 'batch_view.png'), x: 7.03, y: 2.4, w: bw, h: bh, sizing: { type: 'crop', x: 0, y: bw * 462 / bsz.w, w: bw, h: 3.05 } });
+  // crop starts at the «Обработано …» line (≈440 px of 1425-px-wide screenshot)
+  s.addImage({ path: path.join(SRC, 'screens', 'batch_view.png'), x: 7.03, y: 2.4, w: bw, h: bh, sizing: { type: 'crop', x: 0, y: bw * 440 / bsz.w, w: bw, h: 3.05 } });
   const b = F.batch;
   body(s, [{ text: 'Код: ', options: { bold: true } }, { text: b.determined + ' определён · ' + b.ambiguous + ' неоднозначно · ' + (b.notFound ? b.notFound + ' не найден' : b.outOfScope + ' не наша категория'), options: { breakLine: true } },
     { text: 'Карточка: ', options: { bold: true } }, { text: b.complete + ' заполнена · ' + b.incomplete + ' неполная · ' + b.withErrors + ' с ошибками', options: { breakLine: true } },
@@ -416,14 +417,14 @@ function fMetrics(p, n, t) {
   const s = p.addSlide();
   chrome(s, n, t);
   headline(s, 'Код КТРУ первым: ' + M.main.top1 + ', на новых позициях — ' + M.heldOut.top1, [0.85, 1.0, 11.6, 0.6], { fontSize: 24 });
-  body(s, 'Эталоны зафиксированы до прогона · два набора по ' + M.main.cases + ' позиций · источник: ' + F.source, [0.85, 1.6, 11.6, 0.35], { fontSize: 13, color: MUTED });
+  body(s, M.versionNote + ' · ' + F.build + ' · эталоны зафиксированы до прогона · ' + F.source, [0.85, 1.6, 11.6, 0.35], { fontSize: 13, color: MUTED });
   const ie = M.injectedErrors;
   const tiles = [
     [M.main.top1 + ' · ' + M.heldOut.top1, 'Код на 1-м месте', 'основной / отложенный: ' + M.main.top1Pct + ' / ' + M.heldOut.top1Pct],
     [M.main.top3 + ' · ' + M.heldOut.top3, 'Код в топ-3', 'основной / отложенный: ' + M.main.top3Pct + ' / ' + M.heldOut.top3Pct],
     [F.falseAlarmsStrict, 'Ложные тревоги (строго)', 'H31 — в карточке реальная ошибка: лобзик 2,1 г'],
     [ie.caught + '*', 'Внесённые ошибки пойманы', 'единицы ' + ie.units + ', числа ' + ie.unrealistic + ', несуществующие ' + ie.nonExistent + ', опечатки ' + ie.typos],
-    [F.latencyHeadline, 'Время ответа, p50', 'основной ' + F.p50.main + ', отложенный ' + F.p50.heldOut],
+    [F.latencyHeadline, 'Время ответа, p50', 'основной ' + F.p50.main.replace(/\s*мс$/, '') + ', отложенный ' + F.p50.heldOut],
     [F.breakIt.passed, '«Сломай решение»', F.breakIt.pct + ': ' + F.breakIt.note]];
   tiles.forEach(function (c, i) {
     const x = 0.85 + (i % 3) * 3.94, y = 2.2 + Math.floor(i / 3) * 2.12, w = 3.75, h = 1.95;

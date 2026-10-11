@@ -1,5 +1,5 @@
 /* All metric numbers used in the decks. Edit here, then run `node deck.js`.
-   FINAL QA: build main + core 9e6d6a9 + ui 8c1c598, two runs matched. */
+   FINAL QA: main ab39ee1 (qa/summary.md, acceptance core 24411af + ui 4d6ae93, 2 runs). */
 module.exports = {
   versionNote: 'Цифры на текущей версии',
   // Основной набор (45 кейсов)
@@ -19,23 +19,24 @@ module.exports = {
   injectedCaveat: 'набор известен разработчикам — оценка оптимистичная',
   // Скорость и инфраструктура
   latencyMedian: '~50 мс',
-  latencyP95: '~160–190 мс',
-  indexBuild: '~100 с',
-  autotests: '62/62',
-  ktruItems: '3391',
+  latencyP95: '~80–105 мс',
+  indexBuild: '~60 с',
+  autotests: '109/109',
+  ktruItems: '3030',
   loadParallel: '50',
   funnelOutput: 'на выходе группа из 2–3 вариаций',
   // Финальная предзащита (presentation_final.pptx). Источник: qa/metrics_slide.md на origin/feature/qa
   final: {
-    source: 'qa/metrics_slide.md (main 7aa9939)',
+    source: 'qa/metrics_slide.md',
+    build: 'Версия: main ab39ee1',
     falseAlarmsStrict: '1/42',
-    softWarnings: '4/42',
+    softWarnings: '3/42',
     latencyHeadline: 'медиана < 0,1 с',
     p50Range: '50–100 мс',
-    p50: { main: '53–98 мс', heldOut: '49–60 мс' },     // 2 прогона
-    p95: { main: '126–194 мс', heldOut: '102–138 мс' },
+    p50: { main: '51–54 мс', heldOut: '48–54 мс' },     // 2 прогона
+    p95: { main: '102–104 мс', heldOut: '78–93 мс' },
     breakIt: { passed: '32/32', pct: '100%', note: '0 ответов 500, 0 ошибок JS' },
     howFunnel: '1309 → 3',                                 // TO42, инструменты
-    batch: { rows: 13, time: '≈1,3 с', timeSpoken: 'около 1,3 секунды', determined: 9, ambiguous: 2, notFound: 0, outOfScope: 2, complete: 4, incomplete: 8, withErrors: 1 } // docs/demo_batch.csv, screens/batch_view.png (main c6a89cd)
+    batch: { rows: 13, time: '~0,5 с', timeSpoken: 'около 0,5 секунды', determined: 9, ambiguous: 2, notFound: 0, outOfScope: 2, complete: 4, incomplete: 8, withErrors: 1 } // docs/demo_batch.csv, screens/batch_view.png (main c6a89cd)
   }
 };
