@@ -125,7 +125,9 @@ def test_br083_repeated_name_header_is_not_a_row():
 
 @needs_db
 def test_br078_br079_foreign_scripts_agree(eng):
+    """Known English product words map to a desk. A script we do not translate stays out of scope."""
     en = _an(eng, "Office desk laminate 1200mm", "furniture")
     zh = _an(eng, "办公桌 1200毫米", "furniture")
-    assert en.out_of_scope == zh.out_of_scope
-    assert (en.best_ktru is None) == (zh.best_ktru is None) or en.out_of_scope
+    assert en.best_ktru and en.best_ktru.name.lower().startswith("стол")
+    assert "ламинатор" not in en.best_ktru.name.lower()
+    assert zh.out_of_scope and zh.best_ktru is None

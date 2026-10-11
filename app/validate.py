@@ -103,6 +103,12 @@ def check_value(
     """Validate one user value against a KTRU characteristic spec."""
     field = spec.name
     if spec.is_numeric:
+        span = re.fullmatch(r"(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?)", (value or "").strip())
+        if span:
+            ends = [check_value(spec, span.group(i), unit, domain, emit=False) for i in (1, 2)]
+            good = [r for r in ends if r.ok]
+            if good:
+                return CheckResult(True, value.strip(), good[0].unit or unit)
         num = to_number(value)
         target = canon_unit(spec.unit) or spec.unit
         if num is None:
@@ -171,6 +177,11 @@ def check_value(
         return CheckResult(True, out_val, out_unit, issue, converted)
 
     if spec.enums:
+        span = re.fullmatch(r"(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?)", (value or "").strip())
+        if span:
+            ends = [check_value(spec, span.group(i), unit, domain, emit=False) for i in (1, 2)]
+            if all(r.ok for r in ends):
+                return CheckResult(True, value.strip(), unit)
         nv = norm(value)
         choices = {norm(e): e for e in spec.enums}
         if nv in choices:
@@ -218,6 +229,13 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None, t
         out.append(Issue.make(
             "mismatch", field=name, value=f"{value} %", expected="0–100 %",
             message=f"«{name}» = {value}% — доля не может превышать 100%", severity="error"))
+    _battery = {3.6, 7.2, 10.8, 12.0, 14.4, 18.0, 20.0, 21.0, 24.0, 36.0}
+    if (exp == "power" and u == "Вт" and any(abs(num - v) < 0.05 for v in _battery)
+            and re.search(r"аккумулятор|шуруповерт|шуруповёрт", text or "", re.I)):
+        out.append(Issue.make(
+            "mismatch", field=name, value=f"{value} Вт", expected="напряжение, В",
+            message=f"«{name}» = {value} Вт похоже на напряжение аккумулятора ({fmt(num)} В), а не на мощность",
+            suggestions=[f"{fmt(num)} В"], severity="warning"))
     if num <= 0 and any(k in low for k in ("высот", "ширин", "глубин", "длин", "масс", "вес", "мощност")):
         out.append(Issue.make("mismatch", field=name, value=value, expected="> 0",
                               message=f"«{name}» должно быть положительным", severity="error"))

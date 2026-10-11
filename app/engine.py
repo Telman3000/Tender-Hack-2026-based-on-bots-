@@ -10,10 +10,10 @@ from app.db import connect, db_ready
 from app.matcher import OK_MARGIN, candidates_view, narrow_ktru, _cand
 from app.models import (AnalyzeRequest, AnalyzeResponse, CharSource, Completeness, Correction, FillCounter, Issue,
                         MissingCharacteristic, NextStep, ParsedCharacteristic, Question)
-from app.units import canon_unit
+from app.units import canon_unit, convert, dimension, to_number
 from app.validate import is_numeric_spec, numeric_view
 from app.catalog import norm
-from app.parser import RawKV, detect_domain, domain_scores, guess_product_name, parse_free_text, strip_html, translit_if_latin
+from app.parser import RawKV, detect_domain, domain_scores, guess_product_name, parse_free_text, prepare_text, strip_html
 from app.unify import order_characteristics, unify_characteristics
 
 SUPPORTED = {"furniture": "мебель", "clothing": "одежда", "tools": "инструменты"}
@@ -145,6 +145,67 @@ def _corrections(orig: str, text: str, issues, conv) -> list[Correction]:
     return out
 
 
+_OTHER_PRODUCTS = {
+    "стол", "стола", "стул", "стула", "кресло", "кресла", "шкаф", "шкафа",
+    "диван", "дивана", "стеллаж", "стеллажа", "тумба", "тумбы", "молоток", "молотка",
+    "дрель", "дрели", "куртка", "куртки", "костюм", "футболка", "футболки",
+    "ключ", "ключа", "отвертка", "отвёртка", "лобзик", "труба", "трубы",
+}
+_NEG_SKIP = {"менее", "более", "меньше", "больше"}
+
+
+def _second_product(text: str, head: str) -> str | None:
+    parts = re.split(r"\s+и\s+", text or "", maxsplit=1, flags=re.I)
+    if len(parts) < 2:
+        return None
+    words = norm(parts[1]).split()
+    if not words or words[0] not in _OTHER_PRODUCTS:
+        return None
+    h = (norm(head).split() or [""])[0]
+    if h and (words[0].startswith(h[:4]) or h.startswith(words[0][:4])):
+        return None
+    return words[0]
+
+
+def _negations(text: str) -> list[str]:
+    out = []
+    for m in re.finditer(r"\bбез\s+([а-яё\-]{4,})", text or "", re.I):
+        out.append(f"без {m.group(1)}")
+    for m in re.finditer(r"\bне\s+([а-яё\-]{4,})", text or "", re.I):
+        if norm(m.group(1)) in _NEG_SKIP:
+            continue
+        out.append(f"не {m.group(1)}")
+    return out
+
+
+def _value_conflicts(raw: list) -> list[Issue]:
+    """Same label twice with different numbers. A size triple 661х703х1542 is three labels, not a conflict."""
+    groups: dict[str, list] = {}
+    for item in raw:
+        if item.value and not getattr(item, "bound", None):
+            groups.setdefault(item.name.strip().lower(), []).append(item)
+    issues = []
+    for group in groups.values():
+        keys = []
+        for item in group:
+            n = to_number(str(item.value))
+            if n is None:
+                keys.append(("s", str(item.value).strip().lower()))
+                continue
+            u = canon_unit(item.unit)
+            dim = dimension(u) if u else None
+            base = {"mass": "кг", "length": "мм", "power": "Вт", "voltage": "В"}.get(dim or "")
+            conv = convert(n, u, base) if base and u else None
+            keys.append(("n", round(conv if conv is not None else n, 4)))
+        if len(set(keys)) > 1:
+            shown = ", ".join(f"{item.value} {item.unit or ''}".strip() for item in group)
+            issues.append(Issue.make(
+                "mismatch", field=group[0].name, value=shown, severity="error",
+                message=f"«{group[0].name}»: в тексте несколько разных значений ({shown})",
+            ))
+    return issues
+
+
 class CatalogEngine:
     def __init__(self, conn: sqlite3.Connection | None = None) -> None:
         self._own_conn = conn is None
@@ -230,7 +291,8 @@ class CatalogEngine:
                 next_steps=["Собрать индекс из материалов хакатона"],
             )
         src, back = _drop_invisible(strip_html(req.text))  # spans are mapped back to req.text at the end
-        text = translit_if_latin(src)
+        fully_latin = bool(src) and not re.search(r"[а-яё]", src, re.I) and bool(re.search(r"[a-z]", src, re.I))
+        text = prepare_text(src)
         # Only the product head may override a hint. A later word («стойка» in «воротник-стойка») must not.
         head_name = guess_product_name(text)
         first = (norm(head_name).split() or [""])[0]
@@ -255,14 +317,42 @@ class CatalogEngine:
         if weak_hint:
             nr.best, nr.group, nr.shown, nr.next_steps = None, [], [], []
             nr.issues = [i for i in nr.issues if i.type != "ambiguous"]
-        if domain is None and nr.best is not None and not _name_overlap(product, nr.best.name):
+        if domain is None and nr.best is not None and not nr.anchored and not _name_overlap(product, nr.best.name):
             # no category recognised and the best name shares no word with the item: not our category
             nr.best, nr.group, nr.shown, nr.next_steps, nr.issues = None, [], [], [], []
+        matched_head = (norm(nr.query or product).split() or [""])[0]
+        head_known = bool(matched_head) and (
+            matched_head in self.catalog.vocab(domain) or self.catalog.known_form(matched_head, domain))
+        if nr.best is not None and not nr.anchored and nr.margin < OK_MARGIN and not head_known:
+            # «Малаток» is not a vise: an unknown head with a tiny gap must not become a code.
+            nr.best, nr.group, nr.shown, nr.next_steps = None, [], [], []
+            nr.issues = [i for i in nr.issues if i.type != "ambiguous"]
+        forced_oos = False
+        if nr.best is not None:
+            qall, nall = norm(text), norm(nr.best.name)
+            tire = any(w in ("шина", "шины", "автошина") or w.startswith("автошин") or w.startswith("покрыш")
+                       for w in qall.split())
+            tire_hit = any(w.startswith("шин") or w.startswith("покрыш") for w in nall.split())
+            if ("вентури" in nall and "вентури" not in qall) or ("коляск" in qall and "коляск" not in nall) or (tire and not tire_hit):
+                nr.best, nr.group, nr.shown, nr.next_steps = None, [], [], []
+                nr.issues = [i for i in nr.issues if i.type != "ambiguous"]
+                forced_oos = True
+        second = _second_product(text, product)
+        if second:
+            nr.issues.append(Issue.make(
+                "two_products", severity="warning",
+                message=f"В описании два товара, проверена только первая позиция. Второй: «{second}».",
+            ))
+        for neg in _negations(text):
+            nr.issues.append(Issue.make(
+                "negation", severity="warning", value=neg,
+                message=f"Отрицание «{neg}» не записано в карточку как значение. Уточните характеристику.",
+            ))
         if req.characteristics and nr.best is not None:
             raw = self._dedupe_by_canonical(raw, user_rows, nr.best)
             filled = [r for r in raw if r.value]
         issues = list(nr.issues)
-        if text != src:
+        if fully_latin and text != src:
             issues.append(Issue.make(
                 "typo", field="Наименование", value=src, expected=text, suggestions=[text],
                 severity="warning",
@@ -270,13 +360,16 @@ class CatalogEngine:
             ))
         conv: list = []
         alts = [e for _, e in (nr.shown or [])[:10]]
-        chars, char_issues = unify_characteristics(self.catalog, raw, domain, nr.best, user_rows, text, conv, alts)
+        vdomain = domain or (nr.best.domain if nr.best is not None else None)
+        chars, char_issues = unify_characteristics(self.catalog, raw, vdomain, nr.best, user_rows, text, conv, alts)
         issues.extend(char_issues)
         next_steps = self._next_steps(nr, chars, issues)
         for i in issues:
             if i.severity == "error" and i.field:
                 next_steps.append(f"Исправьте «{i.field}»" + (f": {i.suggestions[0]}" if i.suggestions else ""))
 
+        issues.extend(_value_conflicts(raw))
+        has_sus = any(c.suspicious for c in chars)
         # precedence: not_found > error > need_more > ambiguous > ok
         missing_required = any(c.required and not c.value for c in chars)
         if nr.best is None:
@@ -295,6 +388,8 @@ class CatalogEngine:
                 ))
         else:
             status = "ok"
+        if status == "ok" and (has_sus or any(i.type in ("two_products", "negation") for i in issues)):
+            status = "need_more"
         if not filled:
             issues.append(Issue.make(
                 "missing", "Не удалось выделить характеристики из текста", severity="warning",
@@ -312,7 +407,7 @@ class CatalogEngine:
                 obj.span = [back[obj.span[0]], back[max(obj.span[1] - 1, obj.span[0])] + 1]
         chars = order_characteristics(chars)
         foreign = not re.search(r"[а-яё]", req.text or "", re.I)
-        out_of_scope = weak_hint or (
+        out_of_scope = weak_hint or forced_oos or (
             nr.best is None and ((domain is None and hint is None) or foreign)
         )
         if out_of_scope:
@@ -333,7 +428,7 @@ class CatalogEngine:
         no_chars_msg = "У позиции КТРУ нет характеристик" if nr.best is not None and n_total == 0 else None
         question = choose_question(nr.group, {c.name for c in chars if c.value}) if nr.best is not None else None
         has_error = any(i.severity == "error" for i in issues)
-        has_new = any(i.type == "new_property" for i in issues)
+        has_new = any(i.type in ("new_property", "negation", "two_products") for i in issues) or has_sus
         req_rows = [c for c in chars if c.required]
         opt_rows = [c for c in chars if not c.required]
         names = {e.name for _, e in nr.group} if nr.group else ({nr.best.name} if nr.best else set())

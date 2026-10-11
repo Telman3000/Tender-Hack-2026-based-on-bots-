@@ -113,7 +113,7 @@ docker compose up --build      # http://127.0.0.1:8000/
 ## Проверка
 
 ```bash
-python -m pytest -q            # 125 passed (без catalog.db часть тестов пропускается)
+python -m pytest -q            # 136 passed (без catalog.db часть тестов пропускается)
 curl -s -X POST http://127.0.0.1:8000/api/analyze -H "Content-Type: application/json" \
      -d '{"text":"Стол офисный ЛДСП высота 750 мм ширина 1200 мм цвет серый"}'
 python qa/run_eval.py          # 45 кейсов, пишет qa/results.csv и qa/summary.md
@@ -240,7 +240,7 @@ docs/       документация
 | Время на запрос, p50 / p95 | 27 / 70 мс | 25 / 49 мс |
 | Движок (`debug.elapsed_ms`), p50 | **&lt; 30 мс** (99% запросов &lt; 100 мс) | см. `python scripts/measure_latency.py` |
 | «Сломай решение» (qa/break.csv) | 32 из 32 (100%), 0 ответов 500; batch 100 строк **1,9–2,6 с** | |
-| pytest | **125/125** | |
+| pytest | **136/136** | |
 
 \* набор известен разработчикам — оценка оптимистичная. По категориям отложенного набора (код 1-й / статус): мебель 15/15, 15/15; инструменты 15/15, 14/15; одежда 13/15, 14/15.
 

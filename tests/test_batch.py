@@ -102,6 +102,20 @@ def test_csv_empty_422(client):
     assert r.status_code == 422
 
 
+@needs_db
+def test_batch_500_identical_rows_under_10s(client):
+    """BR-063: 500 одинаковых строк пакета должны уложиться в 10 с и сохранить свои id."""
+    items = [{"id": i, "text": "Стол письменный ЛДСП высота 750 мм"} for i in range(500)]
+    r = client.post("/api/analyze/batch?stream=1", json={"items": items})
+    assert r.status_code == 200
+    lines = [json.loads(x) for x in r.text.splitlines() if x]
+    results = [ln for ln in lines if ln["type"] == "result"]
+    summary = lines[-1]["summary"]
+    assert summary["total"] == 500 and summary["elapsed_ms"] < 10000
+    assert [ln["id"] for ln in results] == list(range(500))
+    assert len({ln["best_ktru"]["code"] for ln in results}) == 1
+
+
 def test_openapi_advertises_stream_param():
     """The UI enables NDJSON only if /openapi.json lists a `stream` parameter on /api/analyze/batch."""
     from app.main import app
