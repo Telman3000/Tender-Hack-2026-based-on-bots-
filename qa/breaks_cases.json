@@ -517,6 +517,221 @@
       },
       "expected": "out_of_scope",
       "actual_summary": "not_found card complete"
+    },
+    {
+      "id": "BR-033",
+      "severity": "high",
+      "category": "duplicate_chars",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Молоток слесарный",
+          "domain_hint": "tools",
+          "characteristics": [
+            {
+              "name": "Масса молотка",
+              "value": "500",
+              "unit": "г"
+            },
+            {
+              "name": "Масса молотка",
+              "value": "900",
+              "unit": "г"
+            }
+          ]
+        }
+      },
+      "expected": "single merged mass or error",
+      "actual_summary": "two Масса молотка 0.5 and 0.9 kg; status ok"
+    },
+    {
+      "id": "BR-034",
+      "severity": "medium",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Каталка медицинская для пациентов",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "out_of_scope or match",
+      "actual_summary": "not_found; out_of_scope false"
+    },
+    {
+      "id": "BR-035",
+      "severity": "high",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный высота 7.5e2 мм",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "height 750 mm",
+      "actual_summary": "parsed 7 mm; error"
+    },
+    {
+      "id": "BR-036",
+      "severity": "high",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ширина 1 200 мм",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "width 1200 mm",
+      "actual_summary": "parsed 1 mm; error"
+    },
+    {
+      "id": "BR-037",
+      "severity": "medium",
+      "category": "csv_encoding",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "body": {
+          "method": "POST",
+          "path": "/api/analyze/csv",
+          "multipart_csv_bytes_note": "cp1251: наименование;Стол письменный\\n"
+        }
+      },
+      "expected": "parse cp1251 semicolon CSV",
+      "actual_summary": "HTTP 422 empty file"
+    },
+    {
+      "id": "BR-038",
+      "severity": "high",
+      "category": "csv_quotes",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "body": {
+          "method": "POST",
+          "path": "/api/analyze/csv",
+          "multipart_csv": "name\n\"Стол, письменный, ЛДСП\"\n"
+        }
+      },
+      "expected": "31.01.10 writing desk",
+      "actual_summary": "31.09.10 admin desk; product_guess Стол"
+    },
+    {
+      "id": "BR-039",
+      "severity": "medium",
+      "category": "unit",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ширина 47 дюймов",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "convert inches to mm",
+      "actual_summary": "47 mm assumed; error"
+    },
+    {
+      "id": "BR-040",
+      "severity": "high",
+      "category": "fake_code",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "код КТРУ 31.01.10.000-00000006 Стол письменный",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "code 31.01.10.000-00000006 or ignore safely",
+      "actual_summary": "not_found; best_ktru null"
+    },
+    {
+      "id": "BR-041",
+      "severity": "medium",
+      "category": "unicode",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ширина １２００ мм",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "ASCII 1200",
+      "actual_summary": "value fullwidth １２００"
+    },
+    {
+      "id": "BR-042",
+      "severity": "medium",
+      "category": "characteristics",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный высота 750 мм",
+          "domain_hint": "furniture",
+          "characteristics": [
+            {
+              "name": "Высота",
+              "value": "500",
+              "unit": "мм"
+            }
+          ]
+        }
+      },
+      "expected": "conflict warning or merge",
+      "actual_summary": "UI 500 wins; 750 from text dropped silently"
+    },
+    {
+      "id": "BR-043",
+      "severity": "medium",
+      "category": "injection",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол",
+          "domain_hint": "furniture",
+          "characteristics": [
+            {
+              "name": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "value": "x",
+              "unit": null
+            }
+          ]
+        }
+      },
+      "expected": "reject or truncate",
+      "actual_summary": "new_property with 500-char name"
+    },
+    {
+      "id": "BR-044",
+      "severity": "low",
+      "category": "validation",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стул офисный",
+          "domain_hint": "furniture",
+          "characteristics": [
+            {
+              "name": "Цвет",
+              "value": "🔥красный",
+              "unit": null
+            }
+          ]
+        }
+      },
+      "expected": "strip emoji / enum check",
+      "actual_summary": "portal Цвет 🔥красный accepted"
     }
   ]
 }

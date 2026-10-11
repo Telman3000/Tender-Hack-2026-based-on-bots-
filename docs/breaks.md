@@ -412,10 +412,45 @@ Full JSON bodies: `qa/breaks_cases.json`. Summary:
 | severity | count |
 |----------|------:|
 | critical | 4 |
-| high | 15 |
-| medium | 12 |
-| low | 1 |
-| **total** | **32** |
+| high | 21 |
+| medium | 18 |
+| low | 2 |
+| **total** | **44** |
+
+### Round 2 (BR-033–BR-044) {#round2}
+
+Yandex Disk portal XLSX: **still HTTP 500** (retried yadown + API ×3). Index unchanged (`portal_ste=0`).
+
+| id | severity | category | summary |
+|----|----------|----------|---------|
+| BR-033 | high | duplicate_chars | Duplicate UI «Масса молотка» 500 g + 900 g → **two KTRU rows** (0.5 & 0.9 kg), `status=ok` |
+| BR-034 | medium | out_of_scope | «Каталка медицинская…» → `not_found`, **`out_of_scope: false`** |
+| BR-035 | high | numeric_parse | `7.5e2 мм` → parses **`7`**, not 750 |
+| BR-036 | high | numeric_parse | `1\u2009200 мм` (thin space) → **1 mm**, not 1200 |
+| BR-037 | medium | csv_encoding | cp1251 `наименование;…` header → **422** «нет строк» (encoding/header) |
+| BR-038 | high | csv_quotes | Quoted `"Стол, письменный, ЛДСП"` → **31.09 admin desk**, guess «Стол» |
+| BR-039 | medium | unit | «47 дюймов» → **47 mm**, no inch conversion |
+| BR-040 | high | fake_code | Text «код КТРУ 31.01.10.000-00000006…» → **`not_found`** (worse than ignore) |
+| BR-041 | medium | unicode | Fullwidth `１２００` stored verbatim in «Ширина» |
+| BR-042 | medium | characteristics | Text 750 mm + UI 500 mm → **500 wins**, no conflict issue |
+| BR-043 | medium | injection | 500-char characteristic **name** → `new_property` |
+| BR-044 | low | validation | Emoji in «Цвет» value accepted (`🔥красный`) |
+
+**Examples (copy-paste JSON):**
+
+```json
+{"text": "Молоток слесарный", "domain_hint": "tools", "characteristics": [{"name": "Масса молотка", "value": "500", "unit": "г"}, {"name": "Масса молотка", "value": "900", "unit": "г"}]}
+```
+
+```json
+{"text": "Стол письменный высота 7.5e2 мм", "domain_hint": "furniture"}
+```
+
+```json
+{"text": "Стол письменный ширина 1\u2009200 мм", "domain_hint": "furniture"}
+```
+
+cp1251 CSV (raw bytes): `наименование;Стол письменный\n` encoded cp1251 → POST `/api/analyze/csv`.
 
 ## Top 10 most damaging
 
