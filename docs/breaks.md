@@ -412,10 +412,10 @@ Full JSON bodies: `qa/breaks_cases.json`. Summary:
 | severity | count |
 |----------|------:|
 | critical | 4 |
-| high | 22 |
-| medium | 21 |
+| high | 23 |
+| medium | 22 |
 | low | 3 |
-| **total** | **48** |
+| **total** | **50** |
 
 ### Round 2 (BR-033–BR-044) {#round2}
 
@@ -466,6 +466,23 @@ After rebuilding `catalog.db` with minimal `Одежда.xlsx` / `Мебель.x
 **Note:** BR-004/BR-005 **do not reproduce** «Рост»/«Содержание хлопок» as `new` with minimal portal (mapped to `portal`). They remain valid for **KTRU-only** index / missing exports.
 
 **BR-033** (duplicate «Масса молотка») **still reproduces** with portal loaded.
+
+| id | severity | category | summary |
+|----|----------|----------|---------|
+| BR-049 | medium | outdated_code | Identical «Стол письменный» variants: top-1 **`31.01.10.000-00000004` (v10)** while **`…00000006` (v12)** also in candidates |
+| BR-050 | high | csv | CSV `name\nname\nСтол` → row **`name`** analyzed as product (translit «наме», `out_of_scope`) instead of skipping repeated header |
+
+```json
+{"text": "Стол письменный ЛДСП", "domain_hint": "furniture"}
+```
+(check `best_ktru.code` vs candidates versions in response)
+
+CSV bytes UTF-8:
+```
+name
+name
+Стол
+```
 
 ## Top 10 most damaging
 

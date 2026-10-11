@@ -804,6 +804,33 @@
       "expected": "incomplete if KTRU has required",
       "actual_summary": "complete; required_total=0 (index)",
       "note": "requires minimal portal fixture"
+    },
+    {
+      "id": "BR-049",
+      "severity": "medium",
+      "category": "outdated_code",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ЛДСП",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Prefer newest version code …00000006 when equivalent",
+      "actual_summary": "best …00000004 (v10); …00000006 (v12) in candidates"
+    },
+    {
+      "id": "BR-050",
+      "severity": "high",
+      "category": "csv",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv": "name\nname\nСтол\n"
+      },
+      "expected": "Skip duplicate header or analyze Стол only",
+      "actual_summary": "row 'name' transliterated to наме, out_of_scope row"
     }
   ]
 }
