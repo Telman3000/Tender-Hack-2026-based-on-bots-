@@ -8,7 +8,7 @@
 1. **Materials:** Official archive https://disk.yandex.ru/d/5Olg3IoYYf4loA was **unavailable** from the cloud agent (Yandex Disk 500 / captcha). Fallback used:
    - Downloaded 82 `nsiKTRUs_all_*.xml.zip` parts from the public EIS mirror `keysystems.ru` into `_materials/ktru_parts/`.
    - Built hackathon-shaped `КТРУ/КТРУ xml.zip` via `python scripts/assemble_materials_from_mirror.py` (renames XML to `*all_actual*` for `build_index`).
-   - **Portal XLSX exports were not obtained** → `portal_ste=0`, `portal_chars=0` in `catalog.db` (3030 KTRU rows). Breaks involving `source: "portal"` are still valid on API semantics.
+   - **Portal XLSX (official):** Yandex Disk still returns HTTP 500 (retried 2026-10-11). For portal-specific retests, **minimal fixtures** were generated under `_materials/Примеры выгрузок/` via `scripts/create_minimal_portal_fixture.py` (7 STE / 7 portal_chars — not a substitute for full hackathon exports).
 2. `python -m scripts.build_index --materials _materials`
 3. `uvicorn app.main:app --host 127.0.0.1 --port 8000`
 
@@ -412,10 +412,10 @@ Full JSON bodies: `qa/breaks_cases.json`. Summary:
 | severity | count |
 |----------|------:|
 | critical | 4 |
-| high | 21 |
-| medium | 18 |
-| low | 2 |
-| **total** | **44** |
+| high | 22 |
+| medium | 21 |
+| low | 3 |
+| **total** | **48** |
 
 ### Round 2 (BR-033–BR-044) {#round2}
 
@@ -451,6 +451,21 @@ Yandex Disk portal XLSX: **still HTTP 500** (retried yadown + API ×3). Index un
 ```
 
 cp1251 CSV (raw bytes): `наименование;Стол письменный\n` encoded cp1251 → POST `/api/analyze/csv`.
+
+### Round 2b — with minimal portal fixture {#round2b}
+
+After rebuilding `catalog.db` with minimal `Одежда.xlsx` / `Мебель.xlsx` / `Инструменты.xlsx`:
+
+| id | severity | category | summary |
+|----|----------|----------|---------|
+| BR-045 | medium | batch | Batch `{id:1}` twice → **same id**, different KTRU (стол vs молоток) |
+| BR-046 | medium | mixed_language | `T-shirt cotton 100% size L` + `clothing` → `not_found`, **`out_of_scope: false`** |
+| BR-047 | low | portal_naming | CL01: portal field **`«рost»` lowercase**, not KTRU-style «Рост» |
+| BR-048 | high | card_status | CL01: `card_status=complete`, `completeness.required_total=0` while KTRU `14.12.10.*` has **empty `required_json` in index** |
+
+**Note:** BR-004/BR-005 **do not reproduce** «Рост»/«Содержание хлопок» as `new` with minimal portal (mapped to `portal`). They remain valid for **KTRU-only** index / missing exports.
+
+**BR-033** (duplicate «Масса молотка») **still reproduces** with portal loaded.
 
 ## Top 10 most damaging
 

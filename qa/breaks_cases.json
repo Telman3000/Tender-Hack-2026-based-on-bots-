@@ -732,6 +732,78 @@
       },
       "expected": "strip emoji / enum check",
       "actual_summary": "portal Цвет 🔥красный accepted"
+    },
+    {
+      "id": "BR-045",
+      "severity": "medium",
+      "category": "batch",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/batch",
+        "body": {
+          "items": [
+            {
+              "id": 1,
+              "text": "Стол письменный"
+            },
+            {
+              "id": 1,
+              "text": "Молоток слесарный"
+            }
+          ]
+        }
+      },
+      "expected": "unique ids or stable mapping",
+      "actual_summary": "both results id=1, different codes",
+      "note": "requires catalog built with minimal portal fixture"
+    },
+    {
+      "id": "BR-046",
+      "severity": "medium",
+      "category": "mixed_language",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "T-shirt cotton 100% size L color red",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "match футболка or out_of_scope",
+      "actual_summary": "not_found; out_of_scope false",
+      "note": "requires minimal portal fixture"
+    },
+    {
+      "id": "BR-047",
+      "severity": "low",
+      "category": "portal_naming",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской л08-КБР размер 48-50 рост 170-176 ткань смесовая",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "canonical «Рост»",
+      "actual_summary": "character name «рост» lowercase portal",
+      "note": "requires minimal portal fixture"
+    },
+    {
+      "id": "BR-048",
+      "severity": "high",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской л08-КБР размер 48-50 рост 170-176 ткань смесовая",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "incomplete if KTRU has required",
+      "actual_summary": "complete; required_total=0 (index)",
+      "note": "requires minimal portal fixture"
     }
   ]
 }
