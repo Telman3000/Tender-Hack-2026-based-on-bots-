@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 import time
 
@@ -12,7 +13,7 @@ from app.models import (AnalyzeRequest, AnalyzeResponse, CharSource, Completenes
 from app.units import canon_unit
 from app.validate import is_numeric_spec, numeric_view
 from app.catalog import norm
-from app.parser import RawKV, detect_domain, guess_product_name, parse_free_text, strip_html, translit_if_latin
+from app.parser import RawKV, detect_domain, domain_scores, guess_product_name, parse_free_text, strip_html, translit_if_latin
 from app.unify import order_characteristics, unify_characteristics
 
 SUPPORTED = {"furniture": "мебель", "clothing": "одежда", "tools": "инструменты"}
@@ -230,13 +231,30 @@ class CatalogEngine:
             )
         src, back = _drop_invisible(strip_html(req.text))  # spans are mapped back to req.text at the end
         text = translit_if_latin(src)
-        domain = detect_domain(text, req.domain_hint)
+        # Only the product head may override a hint. A later word («стойка» in «воротник-стойка») must not.
+        head_name = guess_product_name(text)
+        first = (norm(head_name).split() or [""])[0]
+        hs = domain_scores(first)
+        hb = max(hs, key=hs.get)
+        head_domain = hb if hs[hb] > 0 else None
+        hint = req.domain_hint if req.domain_hint in SUPPORTED else None
+        if hint and (head_domain is None or head_domain == hint):
+            domain = hint
+        else:
+            domain = head_domain or detect_domain(text, None)
         product, raw = parse_free_text(text, domain)
         product = guess_product_name(text) or product
         raw, user_rows = self._merge(raw, req)
 
         filled = [r for r in raw if r.value]
         nr = narrow_ktru(self.catalog, product, filled, domain, domain_detected=domain is not None, text=text)
+        # Hint-only pool and the winner's head noun does not match: that is a random code.
+        head = (norm(product).split() or [""])[0]
+        head_known = bool(head) and hint and (head in self.catalog.vocab(hint) or self.catalog.known_form(head, hint))
+        weak_hint = bool(nr.best is not None and hint and head_domain is None and not nr.anchored and not head_known)
+        if weak_hint:
+            nr.best, nr.group, nr.shown, nr.next_steps = None, [], [], []
+            nr.issues = [i for i in nr.issues if i.type != "ambiguous"]
         if domain is None and nr.best is not None and not _name_overlap(product, nr.best.name):
             # no category recognised and the best name shares no word with the item: not our category
             nr.best, nr.group, nr.shown, nr.next_steps, nr.issues = None, [], [], [], []
@@ -293,7 +311,10 @@ class CatalogEngine:
             if obj.span and back is not None:
                 obj.span = [back[obj.span[0]], back[max(obj.span[1] - 1, obj.span[0])] + 1]
         chars = order_characteristics(chars)
-        out_of_scope = nr.best is None and domain is None and req.domain_hint is None
+        foreign = not re.search(r"[а-яё]", req.text or "", re.I)
+        out_of_scope = weak_hint or (
+            nr.best is None and ((domain is None and hint is None) or foreign)
+        )
         if out_of_scope:
             issues.append(Issue.make("out_of_scope", OUT_OF_SCOPE_MSG, severity="warning",
                                      suggestions=list(SUPPORTED.values())))
@@ -312,14 +333,16 @@ class CatalogEngine:
         no_chars_msg = "У позиции КТРУ нет характеристик" if nr.best is not None and n_total == 0 else None
         question = choose_question(nr.group, {c.name for c in chars if c.value}) if nr.best is not None else None
         has_error = any(i.severity == "error" for i in issues)
+        has_new = any(i.type == "new_property" for i in issues)
         req_rows = [c for c in chars if c.required]
         opt_rows = [c for c in chars if not c.required]
         names = {e.name for _, e in nr.group} if nr.group else ({nr.best.name} if nr.best else set())
         group = nr.group if len(nr.group) > 1 else []
+        no_specs = nr.best is not None and n_total == 0
         return AnalyzeResponse(
             code_status="not_found" if nr.best is None else ("determined" if len(names) <= 1 else "ambiguous"),
             card_status="invalid" if has_error else (
-                "incomplete" if (any(not c.value for c in req_rows) or not filled) else "complete"),
+                "incomplete" if (no_specs or has_new or any(not c.value for c in req_rows) or not filled) else "complete"),
             completeness=Completeness(
                 required_total=len(req_rows), required_filled=sum(1 for c in req_rows if c.value),
                 optional_total=len(opt_rows), optional_filled=sum(1 for c in opt_rows if c.value)),

@@ -43,6 +43,18 @@ def size_range(text: str, domain: str | None) -> tuple[float, float, str] | None
 _DIM_HINT = {"length": ["мм", "см"], "mass": ["кг", "г"], "volume": ["л", "мл"], "power": ["Вт"]}
 
 
+def _plausible_units(num: float, unit: str | None, dim: str | None, base_u: str, hi: float) -> list[str]:
+    """Other units of the same dimension whose converted value stays inside the cap."""
+    out = []
+    for alt in _DIM_HINT.get(dim or "", []):
+        if alt == unit:
+            continue
+        conv = convert(num, alt, base_u)
+        if conv is not None and 0 < conv <= hi:
+            out.append(f"{fmt(num) if isinstance(num, float) else num} {alt}")
+    return out[:2]
+
+
 @dataclass
 class CheckResult:
     ok: bool
@@ -234,12 +246,12 @@ def sanity_issues(name: str, value: str, unit: str | None, domain: str | None, t
             out.append(Issue.make(
                 "mismatch", field=name, value=f"{value} {u}", expected=f"от {fmt(lo)} {base_u}",
                 message=f"«{name}» = {value} {u} нереалистично мало для {what} (меньше {fmt(lo)} {base_u})",
-                suggestions=[f"{value} {x}" for x in _DIM_HINT.get(dim, []) if x != u][:2], severity="error"))
+                suggestions=_plausible_units(num, u, dim, base_u, hi), severity="error"))
         if conv is not None and conv > hi:
             out.append(Issue.make(
                 "mismatch", field=name, value=f"{value} {u}", expected=f"до {fmt(hi)} {base_u}",
                 message=f"«{name}» = {value} {u} нереалистично для {what} (больше {fmt(hi)} {base_u})",
-                suggestions=[f"{value} {x}" for x in _DIM_HINT.get(dim, []) if x != u][:2], severity="error"))
+                suggestions=_plausible_units(num, u, dim, base_u, hi), severity="error"))
     return out
 
 
