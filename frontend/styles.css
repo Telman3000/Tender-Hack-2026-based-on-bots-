@@ -126,7 +126,7 @@ ul.next{margin:0;padding-left:18px}
 .hl-preview mark.error{background:#fde2e2;color:#a40000;border-bottom:2px solid #d62828}
 .hl-preview mark.warning{background:#fff1d6;color:#8a5200;border-bottom:2px solid #f08c00}
 .sbadges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px}
-.sbadge{padding:4px 10px;border-radius:var(--pp-radius-pill);font-weight:600;font-size:13px}
+.sbadge{display:inline-block;padding:4px 10px;border-radius:var(--pp-radius-pill);font-weight:600;font-size:13px;white-space:nowrap;word-break:normal;overflow-wrap:normal;line-height:1.25}
 .sbadge.good{background:#e3f4e8;color:#1c6b34}.sbadge.mid{background:#fff1d6;color:#8a5200}.sbadge.bad{background:#fde2e2;color:#a40000}
 .small{font-size:12px;margin-bottom:10px}
 .corr{margin:4px 0}.corr .kind{display:inline-block;font-size:11px;padding:1px 6px;border-radius:8px;background:#e8eef7;color:#264b80;margin-right:6px}
@@ -192,7 +192,8 @@ textarea:focus,select:focus,input:focus{border-color:var(--pp-navy);box-shadow:0
 /* ---------- адаптив: без горизонтального скролла страницы (≤ 420 px) ---------- */
 html,body{max-width:100%;overflow-x:hidden}
 .layout > *,.card,.panel,section,main,form,.fill,.corr,.batch-wrap{min-width:0}
-.code,.badge,td,th,.sbadge,.chip{overflow-wrap:anywhere;word-break:break-word}
+.code,td,th,.chip{overflow-wrap:anywhere;word-break:break-word}
+.badge{overflow-wrap:normal;word-break:normal;white-space:nowrap}
 textarea{max-width:100%;box-sizing:border-box}
 img,svg,canvas{max-width:100%}
 table.chars,table.batch{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -214,6 +215,9 @@ table.chars,table.batch{display:block;max-width:100%;overflow-x:auto;-webkit-ove
 table.batch th,table.batch td{word-break:normal;overflow-wrap:break-word;min-width:84px}
 table.batch td.num,table.batch th:first-child{min-width:28px}
 table.batch td:nth-child(2){min-width:220px}
+/* статусы кода/карточки — бейджи целиком, без переноса букв */
+table.batch td:nth-child(5),table.batch td:nth-child(6),
+table.batch th:nth-child(5),table.batch th:nth-child(6){white-space:nowrap;min-width:110px;overflow-wrap:normal;word-break:normal}
 table.chars th,table.chars td{word-break:normal;overflow-wrap:break-word;min-width:72px}
 
 /* подозрительные характеристики (не подходят к типу товара) */
