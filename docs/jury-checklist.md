@@ -67,7 +67,7 @@
 | Мягкие предупреждения | 3/42 | — | `run_holdout.py` |
 | p50 / p95 (eval) | **27 / 70 ms** | **25 / 49 ms** | `qa/summary.md`, прогон 2026-10-11 |
 | «Сломай решение» | **32/32**, 0×500 | — | `python qa/run_break.py --base http://127.0.0.1:8000` |
-| pytest | **109/109** | — | `python -m pytest -q` |
+| pytest | **125/125** | — | `python -m pytest -q` |
 
 Слайд для презентации: [`qa/metrics_slide.md`](../qa/metrics_slide.md).
 

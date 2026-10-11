@@ -21,7 +21,7 @@ module.exports = {
   latencyMedian: '~50 мс',
   latencyP95: '~80–105 мс',
   indexBuild: '~60 с',
-  autotests: '109/109',
+  autotests: '125/125',
   ktruItems: '3030',
   loadParallel: '50',
   funnelOutput: 'на выходе группа из 2–3 вариаций',

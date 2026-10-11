@@ -78,10 +78,17 @@ HAND_SYNONYMS = {"отвертк": "инструмент ручной прочи
                  "напильник": "инструмент ручной прочий", "ножовк": "инструмент ручной прочий"}
 
 
+# A named hand tool stays a hand tool: one electrical characteristic must not reclassify it.
+_HAND_HEADS = ("молоток", "молотк", "отвертк", "отвёртк", "напильник", "ножовк", "киянк", "зубил", "шпател")
+
+
 def power_signal(query: str, raw: list[RawKV]) -> bool:
     ws = norm(query).split()
     if any(w.startswith(st) for w in ws for st in POWER_STEMS):
         return True
+    head = ws[0] if ws else ""
+    if any(head.startswith(h) for h in _HAND_HEADS):
+        return False
     return any(kv.unit in POWER_UNITS for kv in raw)
 
 
@@ -96,6 +103,7 @@ class NarrowResult:
     shown: list = field(default_factory=list)
     power_tool: bool = False
     margin: float = 999.0
+    anchored: bool = True  # head noun or an explicit synonym supports the winner
 
 
 def score_name(query: str, candidate: str) -> float:
@@ -139,6 +147,8 @@ def _typo_fix(cat: Catalog, w: str, domain: str | None, cutoff: float) -> str | 
     best = min(cands, key=lambda c: (Levenshtein.distance(nw, c[0]), c[0][-2:] != nw[-2:],
                                      abs(len(c[0]) - len(nw)), -c[1], c[0]))[0]
     if best == nw or stems_of(best) & stems_of(nw):  # same stem = inflection, not a typo
+        return None
+    if Levenshtein.distance(nw, best) > 2:  # «резиновый» is not «бензиновый»
         return None
     return best
 
@@ -223,18 +233,21 @@ def narrow_ktru(
 
     names, toks = cat.names_for(pool)
     s1 = _scores(query, names, toks)
+    synonym_used = False
     if enriched != query:
         s1 = np.maximum(s1, _scores(enriched, names, toks) * 0.9)
     head_q = norm(query).split()[0] if norm(query) else ""
     if domain in ("tools", None) and not power_signal(product, raw):
         hsyn = next((v for k, v in HAND_SYNONYMS.items() if head_q.startswith(k)), None)
         if hsyn:
+            synonym_used = True
             s1 = np.maximum(s1, _scores(hsyn, names, toks) + 20.0
                             * np.array([n.startswith(hsyn) for n in names], dtype=float))
     if domain in ("tools", None) and power_signal(product, raw):
         head = norm(query).split()[0] if norm(query) else ""
         syn = next((v for k, v in POWER_SYNONYMS.items() if head.startswith(k)), None)
         if syn:
+            synonym_used = True
             s1 = np.maximum(s1, _scores(syn + " " + query, names, toks) * 0.95)
         okp = cat.okpd_for(pool)
         s1 = s1 + np.where(np.char.startswith(okp, "28.24"), 20.0,
@@ -244,8 +257,10 @@ def narrow_ktru(
     head0 = qws[0] if qws else ""
     syn = next((v for k, v in HEAD_SYNONYMS.items() if head0.startswith(k)), None)
     if syn and domain in ("clothing", None):
+        synonym_used = True
         s1 = np.maximum(s1, _scores(syn + " " + query, names, toks) * 0.95)
     if domain in ("clothing", None) and work_signal(query):
+        synonym_used = True
         if any(head0.startswith(h) for h in WORKWEAR_HEADS) and not any(
             w.startswith(p) for w in qws for p in PROTECTION_STEMS
         ):
@@ -358,6 +373,13 @@ def narrow_ktru(
     group = [(s, e) for s, e, _ in cands if s >= top - GROUP_BAND]
     res.group = group
     res.best = cands[0][1]
+    qh = (res.query or query).split()
+    bh = norm(res.best.name).split()
+    head_ok = False
+    if qh and bh:
+        a, b = norm(qh[0]), bh[0]
+        head_ok = a[:4] == b[:4] or fuzz.ratio(a, b) >= 80
+    res.anchored = head_ok or synonym_used
     distinct_names = {e.name for _, e in group}
     other = next((sc for sc, e, _ in cands if e.name != res.best.name), None)
     res.margin = (top - other) if other is not None else 999.0

@@ -6,6 +6,7 @@ from pathlib import Path
 import csv
 import io
 import json
+import os
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -57,7 +58,7 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
 
 
 BATCH_MAX = 500
-BATCH_WORKERS = 4
+BATCH_WORKERS = max(4, min(8, os.cpu_count() or 4))
 _NAME_HEADERS = {"name", "names", "наименование", "наименования", "название", "товар", "text", "query",
                  "описание", "наименование товара", "наименование сте"}
 
@@ -143,7 +144,9 @@ def analyze_batch(req: BatchRequest, request: Request,
 
 
 def decode_csv(raw: bytes) -> tuple[str, str]:
-    """UTF-8 (with or without BOM), else cp1251."""
+    """UTF-8 (with or without BOM), UTF-16, else cp1251."""
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16"), "utf-16"
     for enc in ("utf-8-sig", "cp1251"):
         try:
             return raw.decode(enc), ("utf-8" if enc == "utf-8-sig" else enc)
@@ -159,14 +162,17 @@ def parse_names_csv(text: str) -> tuple[list[dict], dict]:
         return [], {"delimiter": None, "header": False}
     sample = "\n".join(lines[:50])
     delim = None
+    header_cells = [c.strip().lower().lstrip("\ufeff") for c in next(csv.reader([lines[0]]))]
     if any("\t" in ln for ln in lines[:50]):
         delim = "\t"
     elif any(";" in ln for ln in lines[:50]):
         delim = ";"
+    elif header_cells and all(c in _NAME_HEADERS or c in ("id", "№", "n", "номер") for c in header_cells) and "," in lines[0]:
+        delim = ","  # «name,name» is a header, not a product
     elif any(ln.lstrip().startswith('"') for ln in lines[:50]):
         delim = ","  # quoted CSV: commas inside quotes stay in the name
     if delim is None:
-        rows = [[ln] for ln in lines]  # unquoted single column: commas are part of the name
+        rows = [[ln] for ln in lines]  # unquoted single column: commas stay in the name
     else:
         rows = [r for r in csv.reader(io.StringIO("\n".join(lines)), delimiter=delim) if any(c.strip() for c in r)]
     col, id_col, header = 0, None, False
@@ -176,9 +182,15 @@ def parse_names_csv(text: str) -> tuple[list[dict], dict]:
         col = next((i for i, c in enumerate(first) if c in _NAME_HEADERS), len(first) - 1)
         id_col = next((i for i, c in enumerate(first) if c in ("id", "№", "n", "номер")), None)
         rows = rows[1:]
+    join_names = header and bool(first) and all(c in _NAME_HEADERS for c in first)
     items = []
     for i, r in enumerate(rows):
-        text = r[col].strip() if col < len(r) else ""
+        if join_names:
+            text = " ".join(c.strip() for c in r if c.strip())
+        else:
+            text = r[col].strip() if col < len(r) else ""
+        if delim is None and header:
+            text = " ".join(text.replace(",", " ").split())  # «Стол, письменный» under a name header
         rid = r[id_col].strip() if id_col is not None and id_col < len(r) and r[id_col].strip() else i + 1
         items.append({"id": rid, "text": text})
     _ = sample
