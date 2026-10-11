@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tender Hack 2026 — предзащита</title>
+  <style>
+    :root {
+      --navy: #264B82;
+      --red: #DB2B21;
+      --bg: #E7EEF7;
+      --ink: #1A1A1A;
+      --muted: #7F8792;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 18px/1.45 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--ink); }
+    .deck { min-height: 100vh; display: flex; flex-direction: column; }
+    header { background: var(--navy); color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+    header strong { font-size: 15px; letter-spacing: .02em; }
+    header span { opacity: .85; font-size: 13px; }
+    main { flex: 1; max-width: 960px; margin: 0 auto; padding: 32px 24px 80px; }
+    .slide { display: none; animation: fade .25s ease; }
+    .slide.active { display: block; }
+    @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    h1 { color: var(--navy); font-size: 2rem; margin: 0 0 16px; line-height: 1.15; }
+    h2 { font-size: 1.1rem; color: var(--muted); font-weight: 600; margin: 0 0 20px; }
+    ul { margin: 0; padding-left: 1.2em; }
+    li { margin: 10px 0; }
+    .pill { display: inline-block; background: #fff; border: 1px solid #D4DBE6; border-radius: 999px; padding: 4px 12px; font-size: 14px; margin: 4px 6px 4px 0; }
+    .pill strong { color: var(--red); }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; font-size: 15px; }
+    th, td { border: 1px solid #D4DBE6; padding: 8px 10px; text-align: left; }
+    th { background: #f4f7fb; }
+    footer { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #D4DBE6; padding: 10px 24px; display: flex; justify-content: space-between; align-items: center; }
+    button { font: inherit; border: 1px solid var(--navy); background: #fff; color: var(--navy); border-radius: 4px; padding: 8px 16px; cursor: pointer; font-weight: 600; }
+    button.primary { background: var(--red); border-color: var(--red); color: #fff; }
+    .dots { display: flex; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #c9d1df; }
+    .dot.on { background: var(--red); }
+    .note { font-size: 14px; color: var(--muted); margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <header>
+      <strong>Портал поставщиков · помощник КТРУ</strong>
+      <span>Tender Hack 2026 · ~4 мин</span>
+    </header>
+    <main id="main"></main>
+    <footer>
+      <button type="button" id="prev">← Назад</button>
+      <div class="dots" id="dots"></div>
+      <button type="button" class="primary" id="next">Далее →</button>
+    </footer>
+  </div>
+  <script>
+    const SLIDES = [
+      {
+        title: "Проблема",
+        subtitle: "СТЕ на zakupki.mos.ru",
+        html: `<ul>
+          <li>Поставщик пишет товар свободным текстом, а карточка требует характеристики по <strong>КТРУ</strong>.</li>
+          <li>Код КТРУ — группа вариаций, не один SKU; легко ошибиться в коде и в обязательных полях.</li>
+          <li>Ошибки → отклонения, дубли СТЕ, некорректная референтная цена.</li>
+        </ul>`
+      },
+      {
+        title: "Решение без нейросетей",
+        subtitle: "Офлайн, объяснимо",
+        html: `<p><span class="pill"><strong>Нет LLM</strong></span>
+          <span class="pill">SQLite + правила</span>
+          <span class="pill">FastAPI + HTML/JS</span></p>
+        <ul>
+          <li>Текст → характеристики → сопоставление с КТРУ → код и проверка значений.</li>
+          <li>Бейджи источника: <strong>КТРУ → Портал → Новая</strong> (именно в этом порядке в таблице).</li>
+          <li>Воронка сужения: на каждом шаге видно, сколько кодов осталось и <em>почему</em>.</li>
+          <li>Блок «Допишите ещё n характеристик» с one-click из списка КТРУ.</li>
+        </ul>`
+      },
+      {
+        title: "Скорость",
+        subtitle: "Замерено, не маркeting",
+        html: `<table>
+          <tr><th>Метод</th><th>p50</th><th>p95</th></tr>
+          <tr><td>Движок (<code>debug.elapsed_ms</code>, 150 запросов)</td><td>&lt; 30 ms</td><td>&lt; 35 ms</td></tr>
+          <tr><td>QA eval (45+45 кейсов, wall clock)</td><td>~27 ms</td><td>~70 ms</td></tr>
+          <tr><td>CSV 100 строк (HTTP batch)</td><td colspan="2">1,9–2,6 s</td></tr>
+        </table>
+        <p class="note">Скрипты: <code>scripts/measure_latency.py</code>, <code>qa/run_eval.py</code>, <code>qa/run_break.py</code>. В UI debounce 600 ms — отдельно от сервера.</p>`
+      },
+      {
+        title: "Качество (labeled QA)",
+        subtitle: "qa/cases.csv + holdout.csv",
+        html: `<table>
+          <tr><th></th><th>Основной 45</th><th>Holdout 45</th></tr>
+          <tr><td>Top-1 код</td><td>98%</td><td>96%</td></tr>
+          <tr><td>Top-3</td><td>100%</td><td>98%</td></tr>
+          <tr><td>Ошибки внесённые</td><td colspan="2">30/30 пойманы</td></tr>
+          <tr><td>Break-тесты</td><td colspan="2">32/32, 0× HTTP 500</td></tr>
+        </table>
+        <p class="note">Цифры из последнего прогона <code>qa/summary.md</code>; чек-лист для жюри: <code>docs/jury-checklist.md</code>.</p>`
+      },
+      {
+        title: "Демо",
+        subtitle: "Что показать за 1 минуту",
+        html: `<ul>
+          <li>Стол / молоток / футболка — таблица, воронка, исправление опечатки или единицы в один клик.</li>
+          <li>Абсурд: «ключ … мощность 100» → предупреждение, не «новая характеристика».</li>
+          <li>«Хлеб» / «ноутбук» → честное «не наша категория».</li>
+          <li>Вкладка CSV: <code>docs/demo_batch.csv</code> → сводка → выгрузка результата.</li>
+        </ul>`
+      },
+      {
+        title: "Отличия от «чёрного ящика»",
+        subtitle: "Почему нам можно доверять",
+        html: `<ul>
+          <li>Каждое замечание привязано к полю КТРУ и допустимым значениям.</li>
+          <li>Только актуальный КТРУ; при дубликатах — новейшая версия.</li>
+          <li>Нет обязательного интернета после сборки индекса.</li>
+          <li>109 автотестов pytest + ручной чек-лист жюри.</li>
+        </ul>`
+      }
+    ];
+    let i = 0;
+    const main = document.getElementById("main");
+    const dots = document.getElementById("dots");
+    SLIDES.forEach((_, j) => {
+      const d = document.createElement("span");
+      d.className = "dot" + (j === 0 ? " on" : "");
+      dots.appendChild(d);
+    });
+    function render() {
+      const s = SLIDES[i];
+      main.innerHTML = `<section class="slide active"><h1>${s.title}</h1><h2>${s.subtitle}</h2>${s.html}</section>`;
+      dots.querySelectorAll(".dot").forEach((el, j) => el.classList.toggle("on", j === i));
+      document.getElementById("prev").disabled = i === 0;
+      document.getElementById("next").textContent = i === SLIDES.length - 1 ? "Конец" : "Далее →";
+    }
+    document.getElementById("prev").onclick = () => { if (i > 0) { i--; render(); } };
+    document.getElementById("next").onclick = () => { if (i < SLIDES.length - 1) { i++; render(); } };
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === " ") document.getElementById("next").click();
+      if (e.key === "ArrowLeft") document.getElementById("prev").click();
+    });
+    render();
+  </script>
+</body>
+</html>

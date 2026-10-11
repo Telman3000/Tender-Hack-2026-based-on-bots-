@@ -1,33 +1,33 @@
 ﻿id,group,http,ms,result,info
-B01,absurd,200,655,FAIL,issues=['missing']
-B02,absurd,200,92,FAIL,issues=['missing']
-B03,garbage,200,665,PASS,status=not_found best=
-B04,garbage,200,59,PASS,status=not_found best=
-B05,emoji,200,216,PASS,best=31.01.12.160-00000001
-B06,emoji,200,17,PASS,status=not_found best=
-B07,long,200,130,PASS,len=9800 ms=130
-B08,long,200,598,PASS,len=98000 ms=598
-B09,out_of_scope,200,63,PASS,status=not_found best=
-B10,out_of_scope,200,37,PASS,status=not_found best=
-B11,out_of_scope,200,46,PASS,status=not_found best=
-B12,empty,422,11,PASS,"http=422 detail=[{'type': 'string_too_short', 'loc': ['body', 'text'], 'msg': 'String should hav"
-B13,empty,200,25,PASS,http=200 status=not_found
-B14,empty,200,15,PASS,http=200 status=not_found
-B15,synonym,200,108,PASS,"best=25.73.30.141-00000011 chars=['Масса', 'Тип']"
-B16,synonym,200,120,FAIL,"B15=('25.73.30.141-00000011', ['Масса', 'Тип']) B16=('25.73.30.141-00000011', ['Масса молотка', 'Тип'])"
-B17,incomplete,200,102,PASS,"status=need_more best=31.01.10.000-00000004 next=['Укажите: Вид материала каркаса', 'Укажите: Конфигурация стола', 'Укажите: Тип каркаса', 'Укажите: Назначение стола письменного']"
-B18,fake_code,200,106,PASS,status=need_more best=31.01.10.000-00000004
-B19,fake_code,200,98,PASS,status=need_more best=31.01.10.000-00000004
-B20,fake_code_field,200,146,PASS,status=need_more best=31.01.10.000-00000004
-B21,sql,200,95,PASS,status=need_more; follow-up best=31.01.10.000-00000004
-B22,sql,200,37,PASS,status=not_found best=
-B23,html,200,99,PASS,status=not_found best=
-B24,html,200,101,PASS,status=not_found best=
-B25,bad_domain,422,23,PASS,http=422
-B26,huge_number,200,87,PASS,"status=error issues=[('mismatch', 'error'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning')]"
-B27,negative,200,93,FAIL,"status=need_more issues=[('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning')]"
-B28,zero,200,118,PASS,"status=error issues=[('mismatch', 'error')]"
-B29,translit,200,108,PASS,status=need_more best=31.01.10.000-00000004
-B30,zero_width,200,45,PASS,status=need_more
-B31,null_text,422,2,PASS,http=422
-B32,not_json,422,13,PASS,http=422
+B01,absurd,200,207,PASS,"issues=['mismatch', 'missing']"
+B02,absurd,200,27,PASS,"issues=['mismatch', 'missing']"
+B03,garbage,200,329,PASS,status=not_found best=
+B04,garbage,200,21,PASS,status=not_found best=
+B05,emoji,200,82,PASS,best=31.01.12.160-00000001
+B06,emoji,200,2,PASS,status=not_found best=
+B07,long,200,51,PASS,len=9800 ms=51
+B08,long,200,271,PASS,len=98000 ms=271
+B09,out_of_scope,200,17,PASS,status=not_found best=
+B10,out_of_scope,200,14,PASS,status=not_found best=
+B11,out_of_scope,200,12,PASS,status=not_found best=
+B12,empty,422,2,PASS,"http=422 detail=[{'type': 'string_too_short', 'loc': ['body', 'text'], 'msg': 'String should hav"
+B13,empty,200,2,PASS,http=200 status=not_found
+B14,empty,200,2,PASS,http=200 status=not_found
+B15,synonym,200,35,PASS,"best=25.73.30.141-00000011 chars=['Масса молотка', 'Тип']"
+B16,synonym,200,31,PASS,"B15=('25.73.30.141-00000011', ['Масса молотка', 'Тип']) B16=('25.73.30.141-00000011', ['Масса молотка', 'Тип'])"
+B17,incomplete,200,26,PASS,"status=need_more best=31.01.10.000-00000004 next=['Укажите: Вид материала каркаса', 'Укажите: Конфигурация стола', 'Укажите: Тип каркаса', 'Укажите: Назначение стола письменного']"
+B18,fake_code,200,25,PASS,status=need_more best=31.01.10.000-00000004
+B19,fake_code,200,28,PASS,status=need_more best=31.01.10.000-00000004
+B20,fake_code_field,200,40,PASS,status=need_more best=31.01.10.000-00000004
+B21,sql,200,19,PASS,status=need_more; follow-up best=31.01.10.000-00000004
+B22,sql,200,8,PASS,status=not_found best=
+B23,html,200,21,PASS,status=need_more best=31.01.11.150-00000001
+B24,html,200,21,PASS,status=need_more best=31.01.10.000-00000004
+B25,bad_domain,422,1,PASS,http=422
+B26,huge_number,200,21,PASS,"status=error issues=[('mismatch', 'error'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning')]"
+B27,negative,200,21,PASS,"status=error issues=[('mismatch', 'error'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning'), ('missing', 'warning')]"
+B28,zero,200,31,PASS,"status=error issues=[('mismatch', 'error')]"
+B29,translit,200,34,PASS,status=need_more best=31.01.10.000-00000004
+B30,zero_width,200,24,PASS,status=need_more
+B31,null_text,422,1,PASS,http=422
+B32,not_json,422,1,PASS,http=422
