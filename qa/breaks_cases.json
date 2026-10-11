@@ -277,6 +277,18 @@
       },
       "expected": "CL01 clean — no complete card with new Рост",
       "actual_summary": "ok + complete + new_property Рост"
+    },
+    {
+      "id": "BR-019",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "SCRIPT",
+        "path": "scripts/load_test.py",
+        "args": ["--url", "http://127.0.0.1:8000", "--n", "100", "--concurrency", "50"]
+      },
+      "expected": "p50 <= 100 ms under concurrency",
+      "actual_summary": "p50 ~232 ms, p95 ~306 ms, all HTTP 200"
     }
   ]
 }

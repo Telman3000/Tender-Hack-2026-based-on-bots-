@@ -36,6 +36,7 @@
 | [BR-016](#br-016) | medium | unit_guess | «высота 1.10» parsed as **1.10 m** not mm/cm disambiguation for furniture |
 | [BR-017](#br-017) | medium | typo | QA E26 «Шкав» not corrected; product name keeps typo |
 | [BR-018](#br-018) | high | card_status | QA CL01 (clean): `ok`+`complete` with «Рост» as `new` |
+| [BR-019](#br-019) | medium | performance | 50 concurrent analyzes: p50 ≈232 ms (>>100 ms single-request budget) |
 
 ---
 
@@ -362,9 +363,9 @@ name
 |----------|------:|
 | critical | 2 |
 | high | 6 |
-| medium | 9 |
+| medium | 10 |
 | low | 1 |
-| **total** | **18** |
+| **total** | **19** |
 
 ## Top 10 most damaging
 
@@ -379,7 +380,22 @@ name
 9. **BR-009** — Dangerous typo suggestion (rubber → gasoline).  
 10. **BR-011** — Nonsense auto-fix suggestion (99999 см).
 
-*(BR-017 typo miss and BR-018 CL01 complete+new are additional high/medium findings.)*
+### BR-019
+
+- **severity:** medium  
+- **category:** performance  
+
+**Input:** `python scripts/load_test.py --url http://127.0.0.1:8000 --n 100 --concurrency 50`
+
+**Expected:** Single-request SLA ≤100 ms (task brief); stable under moderate concurrency.
+
+**Actual:** 100/100 HTTP 200, but **p50 ≈ 232 ms**, p95 ≈ 306 ms, max ≈ 353 ms (warm single requests ~7–20 ms).
+
+**Hypothesis:** Shared `CatalogEngine` + thread pool contention / SQLite read locking under parallel `/api/analyze`.
+
+---
+
+*(BR-017–BR-019 are additional findings beyond the initial 16.)*
 
 ---
 
