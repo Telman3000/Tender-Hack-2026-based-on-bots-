@@ -1326,6 +1326,37 @@
       },
       "expected": "Range 170–176 on portal/KTRU height",
       "actual_summary": "\u0420\u0430\u0437\u043c\u0435\u0440/\u0440\u043e\u0441\u0442=170 only; card complete"
+    },
+    {
+      "id": "BR-085",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body_note": "100 parallel identical POSTs",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439 \u041b\u0414\u0421\u041f",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Stable low latency under load",
+      "actual_summary": "~3.3s wall for 100 concurrent requests"
+    },
+    {
+      "id": "BR-086",
+      "severity": "low",
+      "category": "validation",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "   ",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "422 or explicit empty-input error",
+      "actual_summary": "not_found incomplete (empty string returns 422)"
     }
   ]
 }
