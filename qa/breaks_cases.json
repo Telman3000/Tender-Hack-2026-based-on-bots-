@@ -1,0 +1,252 @@
+{
+  "version": 1,
+  "server": "http://127.0.0.1:8000",
+  "materials_note": "Yandex Disk archive unavailable; KTRU built from keysystems mirror — see docs/breaks.md Setup.",
+  "cases": [
+    {
+      "id": "BR-001",
+      "severity": "critical",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ЛДСП высота 750 мм",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Furniture writing desk 31.01.10.* or reject hint — not 28.41.40 machine table",
+      "actual_summary": "best_ktru 28.41.40.000-00000008 Стол металлический под станок; status ambiguous"
+    },
+    {
+      "id": "BR-002",
+      "severity": "high",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "out_of_scope true or clothing domain",
+      "actual_summary": "not_found, out_of_scope false, best_ktru null"
+    },
+    {
+      "id": "BR-003",
+      "severity": "critical",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv": "name\nСтол, письменный\n"
+      },
+      "expected": "31.01.10.* Стол письменный",
+      "actual_summary": "31.01.12.110-00000003 Стол для переговоров"
+    },
+    {
+      "id": "BR-004",
+      "severity": "high",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской размер 48-50 рост 170-176",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "incomplete card; рост mapped to KTRU — not new_property with status ok",
+      "actual_summary": "status ok, card_status complete, Рост source new"
+    },
+    {
+      "id": "BR-005",
+      "severity": "high",
+      "category": "new_property",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Футболка хлопок 100% красная размер 48-50",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Composition in KTRU textile fields",
+      "actual_summary": "Содержание хлопок source new; status ok"
+    },
+    {
+      "id": "BR-006",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Сапоги резиновые с защитным подноском (размер 44) Вид крепления подошвы литьевой Вид средства защиты ног Сапоги Вид товаров Одежда",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "15.20.11.113*",
+      "actual_summary": "15.20.31.000-00000003 metal toe cap shoe"
+    },
+    {
+      "id": "BR-007",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Халат размер 48",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "14.12.* workwear халат",
+      "actual_summary": "14.14.10.000-00000003"
+    },
+    {
+      "id": "BR-008",
+      "severity": "medium",
+      "category": "unit",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Дрель-шуруповерт аккумуляторная мощность 10.8 Вт цвет серый",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Warn on 10.8 W or voltage confusion",
+      "actual_summary": "Мощность 10.8 accepted, no error issues"
+    },
+    {
+      "id": "BR-009",
+      "severity": "medium",
+      "category": "typo",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Шпатель STAYER резиновый 150 мм",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "No harmful typo suggestion",
+      "actual_summary": "typo: резиновый → бензиновый"
+    },
+    {
+      "id": "BR-010",
+      "severity": "medium",
+      "category": "typo",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Киянка резиновая TOPEX 680 гр",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Keep резиновая",
+      "actual_summary": "typo: резиновая → резина"
+    },
+    {
+      "id": "BR-011",
+      "severity": "medium",
+      "category": "validation",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный",
+          "domain_hint": "furniture",
+          "characteristics": [
+            {
+              "name": "Высота",
+              "value": "99999",
+              "unit": "мм"
+            }
+          ]
+        }
+      },
+      "expected": "Realistic correction suggestions",
+      "actual_summary": "suggestions includes 99999 см"
+    },
+    {
+      "id": "BR-012",
+      "severity": "medium",
+      "category": "source_order",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол офисный ДСП высота 750 мм ширина 1200 мм глубина 600 мм цвет серый",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "portal source only when portal index present",
+      "actual_summary": "Высота/Ширина source portal with portal_ste=0"
+    },
+    {
+      "id": "BR-013",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body_note": "Set text to ('Стол ' + 'письменный ' * 5000) — ~35k chars; see qa/redteam_probe.py",
+        "body": {
+          "text": "<generate: 'Стол ' + 'письменный ' * 5000>",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Single analyze <= 100 ms",
+      "actual_summary": "~180-190 ms elapsed"
+    },
+    {
+      "id": "BR-014",
+      "severity": "low",
+      "category": "typo",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стул офисный на колесах металл черный",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "No typo on колесах",
+      "actual_summary": "typo колесах → колесная"
+    },
+    {
+      "id": "BR-015",
+      "severity": "medium",
+      "category": "fill",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Молоток аккумуляторный ударный 18 В",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "fill counter non-null",
+      "actual_summary": "fill null despite characteristics table"
+    },
+    {
+      "id": "BR-016",
+      "severity": "medium",
+      "category": "unit_guess",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "стол офсный дсп высота 1.10 цвет красный",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "mm/cm disambiguation for furniture height",
+      "actual_summary": "Высота 1.10 m"
+    }
+  ]
+}
