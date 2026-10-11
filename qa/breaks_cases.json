@@ -1064,6 +1064,111 @@
       },
       "expected": "48-50 and 170-176 ranges preserved",
       "actual_summary": "portal \u0420\u0430\u0437\u043c\u0435\u0440=48, \u0420\u0430\u0437\u043c\u0435\u0440/\u0440\u043e\u0441\u0442=170"
+    },
+    {
+      "id": "BR-067",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0428\u0438\u043d\u0430 \u0430\u0432\u0442\u043e\u043c\u043e\u0431\u0438\u043b\u044c\u043d\u0430\u044f 205/55 R16",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "not_found/out_of_scope \u2014 not gas cutting machine",
+      "actual_summary": "28.41.30.000-00000011 \u041c\u0430\u0448\u0438\u043d\u0430 \u0433\u0430\u0437\u043e\u043f\u0430\u043b\u044c\u043d\u0430\u044f"
+    },
+    {
+      "id": "BR-068",
+      "severity": "high",
+      "category": "unicode",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0424\u0443\u0442\u0431\u043e\u043b\u043a\u0430 \u0445\u043b\u043e\u043f\u043e\u043a 100\uff05 \u0440\u0430\u0437\u043c\u0435\u0440 52",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Composition mapped; 14.12.* or material fields filled",
+      "actual_summary": "ok 14.14.30.110-00000002; KTRU rows mostly empty"
+    },
+    {
+      "id": "BR-069",
+      "severity": "medium",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041a\u043e\u0441\u0442\u044e\u043c \u0440\u0430\u0431\u043e\u0447\u0438\u0439 \u0410\u041d\u0426 \u0410\u041d\u0421 \u0440\u0430\u0437\u043c\u0435\u0440 50",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Incomplete until KTRU required fields present",
+      "actual_summary": "ok complete; 1 portal \u0420\u0430\u0437\u043c\u0435\u0440 only"
+    },
+    {
+      "id": "BR-070",
+      "severity": "medium",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b'; DROP TABLE ktru;--",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Safe reject or desk \u2014 not conference table",
+      "actual_summary": "31.01.12.110-00000003 ambiguous"
+    },
+    {
+      "id": "BR-071",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041a\u0440\u0435\u0441\u043b\u043e-\u043a\u043e\u043b\u044f\u0441\u043a\u0430 \u0438\u043d\u0432\u0430\u043b\u0438\u0434\u043d\u043e\u0435",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Medical mobility / out_of_scope \u2014 not office chair",
+      "actual_summary": "31.01.12.160-00000006 \u041a\u0440\u0435\u0441\u043b\u043e \u043e\u0444\u0438\u0441\u043d\u043e\u0435"
+    },
+    {
+      "id": "BR-072",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0412\u0435\u0440\u0451\u0432\u043a\u0430 \u043f\u043e\u043b\u0438\u043f\u0440\u043e\u043f\u0438\u043b\u0435\u043d\u043e\u0432\u0430\u044f 10 \u043c\u043c 50 \u043c",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Rope/cordage or not_found \u2014 not industrial burner",
+      "actual_summary": "28.21.11.111-00000005 \u0413\u043e\u0440\u0435\u043b\u043a\u0430 \u043f\u0440\u043e\u043c\u044b\u0448\u043b\u0435\u043d\u043d\u0430\u044f"
+    },
+    {
+      "id": "BR-073",
+      "severity": "medium",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041f\u0430\u0440\u0430\u0446\u0435\u0442\u0430\u043c\u043e\u043b \u0442\u0430\u0431\u043b\u0435\u0442\u043a\u0438 500 \u043c\u0433",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "out_of_scope true",
+      "actual_summary": "not_found, out_of_scope false"
     }
   ]
 }

@@ -411,10 +411,10 @@ Full JSON bodies: `qa/breaks_cases.json`. Summary:
 | severity | count |
 |----------|------:|
 | critical | 5 |
-| high | 32 |
-| medium | 28 |
+| high | 36 |
+| medium | 31 |
 | low | 3 |
-| **total** | **68** |
+| **total** | **75** |
 
 ### Round 2 (BR-033–BR-044) {#round2}
 
@@ -517,6 +517,13 @@ Full portal rebuild (`60000` STE). Copy-paste bodies: `qa/breaks_cases.json` + r
 | BR-064 | high | wrong_ktru | «**Труба медная** 15 мм» + `tools` → **`28.25.14.125-00000002` Труба Вентури** |
 | BR-065 | high | wrong_ktru | «**Барабан малый** латунный» + `tools` → **`28.21.12.000-00000004` Барабан прокалочный** (not percussion) |
 | BR-066 | medium | numeric_parse | CL01 text «48-**50**» / «170-**176**» → portal values **`48`** and **`170` only** (range tail lost) |
+| BR-067 | high | wrong_ktru | «**Шина автомобильная** 205/55 R16» + `tools` → **`28.41.30.000-00000011` Машина газопальная** |
+| BR-068 | high | wrong_ktru | «**Футболка** хлопок **100％**» (fullwidth percent) → **`14.14.30.110`** without mapped composition |
+| BR-069 | medium | card_status | «Костюм рабочий… **размер 50**» → `ok`/`complete` with **one** portal field (no «Размер/рост») |
+| BR-070 | medium | wrong_ktru | SQL-ish `Стол'; DROP TABLE…` → **`31.01.12.110`** conference table, `ambiguous` |
+| BR-071 | high | wrong_ktru | «**Кресло-коляска** инвалидное» → **`31.01.12.160` Кресло офисное** |
+| BR-072 | high | wrong_ktru | «**Верёвка** полипропиленовая…» + `tools` → **`28.21.11.111` Горелка промышленная** |
+| BR-073 | medium | out_of_scope | Med/PP E / food-style lines (`Парацетамол`, `Консервы`, `Лампа LED`, `Бетон`…) → `not_found`, **`out_of_scope: false`** |
 
 **CL01 JSON (official index):**
 
