@@ -1,0 +1,1362 @@
+{
+  "version": 1,
+  "server": "http://127.0.0.1:8000",
+  "materials_note": "Official materials under _materials/yandex_retry2 (Yandex Disk «Казань 2026»); build_index → data/processed/catalog.db — see docs/breaks.md Setup.",
+  "cases": [
+    {
+      "id": "BR-001",
+      "severity": "critical",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ЛДСП высота 750 мм",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Furniture writing desk 31.01.10.* or reject hint — not 28.41.40 machine table",
+      "actual_summary": "best_ktru 28.41.40.000-00000008 Стол металлический под станок; status ambiguous"
+    },
+    {
+      "id": "BR-002",
+      "severity": "high",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "out_of_scope true or clothing domain",
+      "actual_summary": "not_found, out_of_scope false, best_ktru null"
+    },
+    {
+      "id": "BR-003",
+      "severity": "critical",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv": "name\nСтол, письменный\n"
+      },
+      "expected": "31.01.10.* Стол письменный",
+      "actual_summary": "31.01.12.110-00000003 Стол для переговоров"
+    },
+    {
+      "id": "BR-004",
+      "severity": "high",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской размер 48-50 рост 170-176",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "incomplete card; рост mapped to KTRU — not new_property with status ok",
+      "actual_summary": "status ok, card_status complete, Рост source new"
+    },
+    {
+      "id": "BR-005",
+      "severity": "high",
+      "category": "new_property",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Футболка хлопок 100% красная размер 48-50",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Composition in KTRU textile fields",
+      "actual_summary": "Содержание хлопок source new; status ok"
+    },
+    {
+      "id": "BR-006",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Сапоги резиновые с защитным подноском (размер 44) Вид крепления подошвы литьевой Вид средства защиты ног Сапоги Вид товаров Одежда",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "15.20.11.113*",
+      "actual_summary": "15.20.31.000-00000003 metal toe cap shoe"
+    },
+    {
+      "id": "BR-007",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Халат размер 48",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "14.12.* workwear халат",
+      "actual_summary": "14.14.10.000-00000003"
+    },
+    {
+      "id": "BR-008",
+      "severity": "medium",
+      "category": "unit",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Дрель-шуруповерт аккумуляторная мощность 10.8 Вт цвет серый",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Warn on 10.8 W or voltage confusion",
+      "actual_summary": "Мощность 10.8 accepted, no error issues"
+    },
+    {
+      "id": "BR-009",
+      "severity": "medium",
+      "category": "typo",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Шпатель STAYER резиновый 150 мм",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "No harmful typo suggestion",
+      "actual_summary": "typo: резиновый → бензиновый"
+    },
+    {
+      "id": "BR-010",
+      "severity": "medium",
+      "category": "typo",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Киянка резиновая TOPEX 680 гр",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Keep резиновая",
+      "actual_summary": "typo: резиновая → резина"
+    },
+    {
+      "id": "BR-011",
+      "severity": "medium",
+      "category": "validation",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный",
+          "domain_hint": "furniture",
+          "characteristics": [
+            {
+              "name": "Высота",
+              "value": "99999",
+              "unit": "мм"
+            }
+          ]
+        }
+      },
+      "expected": "Realistic correction suggestions",
+      "actual_summary": "suggestions includes 99999 см"
+    },
+    {
+      "id": "BR-012",
+      "severity": "medium",
+      "category": "source_order",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол офисный ДСП высота 750 мм ширина 1200 мм глубина 600 мм цвет серый",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "portal source only when portal index present",
+      "actual_summary": "Высота/Ширина source portal with portal_ste=0"
+    },
+    {
+      "id": "BR-013",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body_note": "Set text to ('Стол ' + 'письменный ' * 5000) — ~35k chars; see qa/redteam_probe.py",
+        "body": {
+          "text": "<generate: 'Стол ' + 'письменный ' * 5000>",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Single analyze <= 100 ms",
+      "actual_summary": "~180-190 ms elapsed"
+    },
+    {
+      "id": "BR-014",
+      "severity": "low",
+      "category": "typo",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стул офисный на колесах металл черный",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "No typo on колесах",
+      "actual_summary": "typo колесах → колесная"
+    },
+    {
+      "id": "BR-015",
+      "severity": "medium",
+      "category": "fill",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Молоток аккумуляторный ударный 18 В",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "fill counter non-null",
+      "actual_summary": "fill null despite characteristics table"
+    },
+    {
+      "id": "BR-016",
+      "severity": "medium",
+      "category": "unit_guess",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "стол офсный дсп высота 1.10 цвет красный",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "mm/cm disambiguation for furniture height",
+      "actual_summary": "Высота 1.10 m"
+    },
+    {
+      "id": "BR-017",
+      "severity": "medium",
+      "category": "typo",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Шкав для одежды металлический",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "typo issue Шкав → Шкаф",
+      "actual_summary": "no typo; product_guess keeps Шкав"
+    },
+    {
+      "id": "BR-018",
+      "severity": "high",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской л08-КБР размер 48-50 рост 170-176 ткань смесовая",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "CL01 clean — no complete card with new Рост",
+      "actual_summary": "ok + complete + new_property Рост"
+    },
+    {
+      "id": "BR-019",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "SCRIPT",
+        "path": "scripts/load_test.py",
+        "args": [
+          "--url",
+          "http://127.0.0.1:8000",
+          "--n",
+          "100",
+          "--concurrency",
+          "50"
+        ]
+      },
+      "expected": "p50 <= 100 ms under concurrency",
+      "actual_summary": "p50 ~232 ms, p95 ~306 ms, all HTTP 200"
+    },
+    {
+      "id": "BR-020",
+      "severity": "critical",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Молоток слесарный 600 г",
+          "domain_hint": "tools",
+          "characteristics": [
+            {
+              "name": "Напряжение",
+              "value": "18",
+              "unit": "В"
+            }
+          ]
+        }
+      },
+      "expected": "25.73 hammer",
+      "actual_summary": "28.24.10.000-00000001 ok complete"
+    },
+    {
+      "id": "BR-021",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Отвертка шлицевая 6 мм",
+          "domain_hint": "tools",
+          "characteristics": [
+            {
+              "name": "Частота вращения",
+              "value": "3000",
+              "unit": "об/мин"
+            }
+          ]
+        }
+      },
+      "expected": "hand screwdriver",
+      "actual_summary": "28.24.11.000-00000030 Шуруповерт"
+    },
+    {
+      "id": "BR-022",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Лобзик ручной",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "jigsaw",
+      "actual_summary": "28.24.11.000-00000010 Фрезer"
+    },
+    {
+      "id": "BR-023",
+      "severity": "critical",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Шкаф для одежды металлический 1800х600х2000 мм",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "31.01 wardrobe",
+      "actual_summary": "25.72.14.120-00000001 window hardware"
+    },
+    {
+      "id": "BR-024",
+      "severity": "medium",
+      "category": "new_property",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный | Высота 750 мм | Ширина 1200 мм | цвет серый",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "no junk new",
+      "actual_summary": "new Стол=письменный"
+    },
+    {
+      "id": "BR-025",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Скрипка деревянная для оркестра",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "out_of_scope",
+      "actual_summary": "25.71.13 pencil sharpener"
+    },
+    {
+      "id": "BR-026",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Набор бит PH2 для аккумуляторного шуруповерта отвертка",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "driver/bits",
+      "actual_summary": "25.71.11 knife set"
+    },
+    {
+      "id": "BR-027",
+      "severity": "high",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий размер 44",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "incomplete",
+      "actual_summary": "ok complete 14.12.10"
+    },
+    {
+      "id": "BR-028",
+      "severity": "high",
+      "category": "new_property",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской",
+          "domain_hint": "clothing",
+          "characteristics": [
+            {
+              "name": "Рост",
+              "value": "170-176"
+            }
+          ]
+        }
+      },
+      "expected": "KTRU рост",
+      "actual_summary": "new Рост ok complete"
+    },
+    {
+      "id": "BR-029",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Отвертка",
+          "domain_hint": "tools",
+          "characteristics": [
+            {
+              "name": "Тип",
+              "value": "аккумуляторная"
+            }
+          ]
+        }
+      },
+      "expected": "power tool",
+      "actual_summary": "25.73.30 hand ok complete"
+    },
+    {
+      "id": "BR-030",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол; письменный; ЛДСП высота 750",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "31.01.10 desk",
+      "actual_summary": "31.09.10 admin desk"
+    },
+    {
+      "id": "BR-031",
+      "severity": "medium",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Ключ гаечный размер 17х19 мм",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "17x19 key",
+      "actual_summary": "25.73.30.171 разводной"
+    },
+    {
+      "id": "BR-032",
+      "severity": "medium",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Дрель ударная сетевая мощность 800 Вт",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "out_of_scope",
+      "actual_summary": "not_found card complete"
+    },
+    {
+      "id": "BR-033",
+      "severity": "high",
+      "category": "duplicate_chars",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Молоток слесарный",
+          "domain_hint": "tools",
+          "characteristics": [
+            {
+              "name": "Масса молотка",
+              "value": "500",
+              "unit": "г"
+            },
+            {
+              "name": "Масса молотка",
+              "value": "900",
+              "unit": "г"
+            }
+          ]
+        }
+      },
+      "expected": "single merged mass or error",
+      "actual_summary": "two Масса молотка 0.5 and 0.9 kg; status ok"
+    },
+    {
+      "id": "BR-034",
+      "severity": "medium",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Каталка медицинская для пациентов",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "out_of_scope or match",
+      "actual_summary": "not_found; out_of_scope false"
+    },
+    {
+      "id": "BR-035",
+      "severity": "high",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный высота 7.5e2 мм",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "height 750 mm",
+      "actual_summary": "parsed 7 mm; error"
+    },
+    {
+      "id": "BR-036",
+      "severity": "high",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ширина 1 200 мм",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "width 1200 mm",
+      "actual_summary": "parsed 1 mm; error"
+    },
+    {
+      "id": "BR-037",
+      "severity": "medium",
+      "category": "csv_encoding",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "body": {
+          "method": "POST",
+          "path": "/api/analyze/csv",
+          "multipart_csv_bytes_note": "cp1251: наименование;Стол письменный\\n"
+        }
+      },
+      "expected": "parse cp1251 semicolon CSV",
+      "actual_summary": "HTTP 422 empty file"
+    },
+    {
+      "id": "BR-038",
+      "severity": "high",
+      "category": "csv_quotes",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "body": {
+          "method": "POST",
+          "path": "/api/analyze/csv",
+          "multipart_csv": "name\n\"Стол, письменный, ЛДСП\"\n"
+        }
+      },
+      "expected": "31.01.10 writing desk",
+      "actual_summary": "31.09.10 admin desk; product_guess Стол"
+    },
+    {
+      "id": "BR-039",
+      "severity": "medium",
+      "category": "unit",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ширина 47 дюймов",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "convert inches to mm",
+      "actual_summary": "47 mm assumed; error"
+    },
+    {
+      "id": "BR-040",
+      "severity": "high",
+      "category": "fake_code",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "код КТРУ 31.01.10.000-00000006 Стол письменный",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "code 31.01.10.000-00000006 or ignore safely",
+      "actual_summary": "not_found; best_ktru null"
+    },
+    {
+      "id": "BR-041",
+      "severity": "medium",
+      "category": "unicode",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ширина １２００ мм",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "ASCII 1200",
+      "actual_summary": "value fullwidth １２００"
+    },
+    {
+      "id": "BR-042",
+      "severity": "medium",
+      "category": "characteristics",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный высота 750 мм",
+          "domain_hint": "furniture",
+          "characteristics": [
+            {
+              "name": "Высота",
+              "value": "500",
+              "unit": "мм"
+            }
+          ]
+        }
+      },
+      "expected": "conflict warning or merge",
+      "actual_summary": "UI 500 wins; 750 from text dropped silently"
+    },
+    {
+      "id": "BR-043",
+      "severity": "medium",
+      "category": "injection",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол",
+          "domain_hint": "furniture",
+          "characteristics": [
+            {
+              "name": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "value": "x",
+              "unit": null
+            }
+          ]
+        }
+      },
+      "expected": "reject or truncate",
+      "actual_summary": "new_property with 500-char name"
+    },
+    {
+      "id": "BR-044",
+      "severity": "low",
+      "category": "validation",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стул офисный",
+          "domain_hint": "furniture",
+          "characteristics": [
+            {
+              "name": "Цвет",
+              "value": "🔥красный",
+              "unit": null
+            }
+          ]
+        }
+      },
+      "expected": "strip emoji / enum check",
+      "actual_summary": "portal Цвет 🔥красный accepted"
+    },
+    {
+      "id": "BR-045",
+      "severity": "medium",
+      "category": "batch",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/batch",
+        "body": {
+          "items": [
+            {
+              "id": 1,
+              "text": "Стол письменный"
+            },
+            {
+              "id": 1,
+              "text": "Молоток слесарный"
+            }
+          ]
+        }
+      },
+      "expected": "unique ids or stable mapping",
+      "actual_summary": "both results id=1, different codes",
+      "note": "requires catalog built with minimal portal fixture"
+    },
+    {
+      "id": "BR-046",
+      "severity": "medium",
+      "category": "mixed_language",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "T-shirt cotton 100% size L color red",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "match футболка or out_of_scope",
+      "actual_summary": "not_found; out_of_scope false",
+      "note": "requires minimal portal fixture"
+    },
+    {
+      "id": "BR-047",
+      "severity": "low",
+      "category": "portal_naming",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской л08-КБР размер 48-50 рост 170-176 ткань смесовая",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "canonical «Рост»",
+      "actual_summary": "character name «рост» lowercase portal",
+      "note": "requires minimal portal fixture"
+    },
+    {
+      "id": "BR-048",
+      "severity": "high",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской л08-КБР размер 48-50 рост 170-176 ткань смесовая",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "incomplete if KTRU has required",
+      "actual_summary": "complete; required_total=0 (index)",
+      "note": "requires minimal portal fixture"
+    },
+    {
+      "id": "BR-049",
+      "severity": "medium",
+      "category": "outdated_code",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Стол письменный ЛДСП",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Prefer newest version code …00000006 when equivalent",
+      "actual_summary": "best …00000004 (v10); …00000006 (v12) in candidates"
+    },
+    {
+      "id": "BR-050",
+      "severity": "high",
+      "category": "csv",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv": "name\nname\nСтол\n"
+      },
+      "expected": "Skip duplicate header or analyze Стол only",
+      "actual_summary": "row 'name' transliterated to наме, out_of_scope row"
+    },
+    {
+      "id": "BR-051",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body_note": "text = \"Стол \" + \"x\"*20000",
+        "body": {
+          "text": "<generate: \"Стол \" + \"x\"*20000>",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "<=100ms",
+      "actual_summary": "~248ms elapsed"
+    },
+    {
+      "id": "BR-052",
+      "severity": "critical",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской размер 48-50 рост 170-176",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "KTRU+portal characteristics; incomplete until required KTRU fields filled",
+      "actual_summary": "ok complete; 2 portal chars only; ktru_char_values=0 for 14.12.10.000-00000002 in index",
+      "note": "requires full portal index (yandex_retry2)"
+    },
+    {
+      "id": "BR-053",
+      "severity": "high",
+      "category": "homoglyph",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "St\u043el pismennyi LDSP vysota 750 mm",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "31.01.10 writing desk or graceful translit",
+      "actual_summary": "not_found, best_ktru null"
+    },
+    {
+      "id": "BR-054",
+      "severity": "high",
+      "category": "mixed_language",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b pismennyi \u041b\u0414\u0421\u041f 750 \u043c\u043c",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "31.01.10.* \u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439",
+      "actual_summary": "31.09.10.000-00000003 need_more"
+    },
+    {
+      "id": "BR-055",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0413\u0438\u0442\u0430\u0440\u0430 \u0430\u043a\u0443\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "out_of_scope or not_found \u2014 not industrial equipment",
+      "actual_summary": "28.25.14.129-00000013 \u0423\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430 \u0442\u0435\u0440\u043c\u043e\u043a\u0430\u0442\u0430\u043b\u0438\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f"
+    },
+    {
+      "id": "BR-056",
+      "severity": "medium",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041f\u0438\u0430\u043d\u0438\u043d\u043e \u0430\u043a\u0443\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0435",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "out_of_scope true (musical instrument)",
+      "actual_summary": "not_found, out_of_scope false"
+    },
+    {
+      "id": "BR-057",
+      "severity": "high",
+      "category": "unit_guess",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041c\u043e\u043b\u043e\u0442\u043e\u043a \u0441\u043b\u0435\u0441\u0430\u0440\u043d\u044b\u0439 \u043c\u0430\u0441\u0441\u0430 0.5 \u0442",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Reject or convert 0.5 t \u2192 500 kg with sanity check",
+      "actual_summary": "ok complete; \u041c\u0430\u0441\u0441\u0430 \u043c\u043e\u043b\u043e\u0442\u043a\u0430=0.5 \u043a\u0433; unit warning only"
+    },
+    {
+      "id": "BR-058",
+      "severity": "medium",
+      "category": "csv",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv_note": "UTF-8 tab-separated: name\\ttext\\n\\t\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439\\n"
+      },
+      "expected": "Parse second column or detect wrong layout",
+      "actual_summary": "error \u041f\u0443\u0441\u0442\u043e\u0435 \u043d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435"
+    },
+    {
+      "id": "BR-059",
+      "severity": "high",
+      "category": "mixed_language",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Kostium rabochii razmer 48-50",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "14.12.* suit or not_found",
+      "actual_summary": "14.12.30.160-00000515 \u041e\u0447\u043a\u0438 \u0434\u043b\u044f \u0437\u0430\u0449\u0438\u0442\u044b \u043e\u0442 \u0440\u0430\u0434\u0438\u0430\u0446\u0438\u0438 ambiguous"
+    },
+    {
+      "id": "BR-060",
+      "severity": "medium",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439 \u0448\u0438\u0440\u0438\u043d\u0430 120-130",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Range 120\u2013130 mm stored or flagged",
+      "actual_summary": "\u0428\u0438\u0440\u0438\u043d\u0430=120 \u043c\u043c only"
+    },
+    {
+      "id": "BR-061",
+      "severity": "high",
+      "category": "validation",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0414\u0438\u0432\u0430\u043d \u0424\u0440\u0438\u0441\u0442\u0430\u0439\u043b \u0414\u043e\u043c\u0438\u043d\u043e 2-\u0445 \u043c\u0435\u0441\u0442\u043d\u044b\u0439 \u0412 \u0441\u043e\u0441\u0442\u0430\u0432\u0435 \u043d\u0430\u0431\u043e\u0440\u0430 \u043c\u0435\u0431\u0435\u043b\u0438 \u041d\u0435\u0442 \u0412\u0438\u0434 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u0430 \u043d\u0430\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f \u0412\u044b\u0441\u043e\u043a\u043e\u044d\u043b\u0430\u0441\u0442\u0438\u0447\u043d\u044b\u0439 \u043f\u043e\u0440\u043e\u043b\u043e\u043d HR5535 \u0412\u0438\u0434 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u0430 \u043d\u043e\u0436\u0435\u043a/\u043e\u043f\u043e\u0440 \u041c\u0435\u0442\u0430\u043b\u043b",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "not_allowed \u2192 error/invalid card (holdout H17)",
+      "actual_summary": "not_allowed severity warning; card_status incomplete"
+    },
+    {
+      "id": "BR-062",
+      "severity": "high",
+      "category": "csv",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv_note": "Double BOM UTF-8: \\ufeff\\ufeffname\\n\u0421\u0442\u043e\u043b\\n"
+      },
+      "expected": "31.01.10 desk",
+      "actual_summary": "31.01.12.110 conference table"
+    },
+    {
+      "id": "BR-063",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/batch?stream=1",
+        "body_note": "500\u00d7 {\"id\":\"n\",\"text\":\"\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439\",\"domain_hint\":\"furniture\"}"
+      },
+      "expected": "Batch/stream within ~10s budget",
+      "actual_summary": "~13.3s wall for 500 NDJSON lines"
+    },
+    {
+      "id": "BR-064",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0422\u0440\u0443\u0431\u0430 \u043c\u0435\u0434\u043d\u0430\u044f 15 \u043c\u043c",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Plumbing/pipe KTRU or out_of_scope \u2014 not Venturi tube",
+      "actual_summary": "28.25.14.125-00000002 \u0422\u0440\u0443\u0431\u0430 \u0412\u0435\u043d\u0442\u0443\u0440\u0438"
+    },
+    {
+      "id": "BR-065",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0411\u0430\u0440\u0430\u0431\u0430\u043d \u043c\u0430\u043b\u044b\u0439 \u043b\u0430\u0442\u0443\u043d\u043d\u044b\u0439",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Musical/percussion out_of_scope or not_found",
+      "actual_summary": "28.21.12.000-00000004 \u0411\u0430\u0440\u0430\u0431\u0430\u043d \u043f\u0440\u043e\u043a\u0430\u043b\u043e\u0447\u043d\u044b\u0439"
+    },
+    {
+      "id": "BR-066",
+      "severity": "medium",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041a\u043e\u0441\u0442\u044e\u043c \u0440\u0430\u0431\u043e\u0447\u0438\u0439 \u043c\u0443\u0436\u0441\u043a\u043e\u0439 \u0440\u0430\u0437\u043c\u0435\u0440 48-50 \u0440\u043e\u0441\u0442 170-176",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "48-50 and 170-176 ranges preserved",
+      "actual_summary": "portal \u0420\u0430\u0437\u043c\u0435\u0440=48, \u0420\u0430\u0437\u043c\u0435\u0440/\u0440\u043e\u0441\u0442=170"
+    },
+    {
+      "id": "BR-067",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0428\u0438\u043d\u0430 \u0430\u0432\u0442\u043e\u043c\u043e\u0431\u0438\u043b\u044c\u043d\u0430\u044f 205/55 R16",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "not_found/out_of_scope \u2014 not gas cutting machine",
+      "actual_summary": "28.41.30.000-00000011 \u041c\u0430\u0448\u0438\u043d\u0430 \u0433\u0430\u0437\u043e\u043f\u0430\u043b\u044c\u043d\u0430\u044f"
+    },
+    {
+      "id": "BR-068",
+      "severity": "high",
+      "category": "unicode",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0424\u0443\u0442\u0431\u043e\u043b\u043a\u0430 \u0445\u043b\u043e\u043f\u043e\u043a 100\uff05 \u0440\u0430\u0437\u043c\u0435\u0440 52",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Composition mapped; 14.12.* or material fields filled",
+      "actual_summary": "ok 14.14.30.110-00000002; KTRU rows mostly empty"
+    },
+    {
+      "id": "BR-069",
+      "severity": "medium",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041a\u043e\u0441\u0442\u044e\u043c \u0440\u0430\u0431\u043e\u0447\u0438\u0439 \u0410\u041d\u0426 \u0410\u041d\u0421 \u0440\u0430\u0437\u043c\u0435\u0440 50",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Incomplete until KTRU required fields present",
+      "actual_summary": "ok complete; 1 portal \u0420\u0430\u0437\u043c\u0435\u0440 only"
+    },
+    {
+      "id": "BR-070",
+      "severity": "medium",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b'; DROP TABLE ktru;--",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Safe reject or desk \u2014 not conference table",
+      "actual_summary": "31.01.12.110-00000003 ambiguous"
+    },
+    {
+      "id": "BR-071",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041a\u0440\u0435\u0441\u043b\u043e-\u043a\u043e\u043b\u044f\u0441\u043a\u0430 \u0438\u043d\u0432\u0430\u043b\u0438\u0434\u043d\u043e\u0435",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Medical mobility / out_of_scope \u2014 not office chair",
+      "actual_summary": "31.01.12.160-00000006 \u041a\u0440\u0435\u0441\u043b\u043e \u043e\u0444\u0438\u0441\u043d\u043e\u0435"
+    },
+    {
+      "id": "BR-072",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0412\u0435\u0440\u0451\u0432\u043a\u0430 \u043f\u043e\u043b\u0438\u043f\u0440\u043e\u043f\u0438\u043b\u0435\u043d\u043e\u0432\u0430\u044f 10 \u043c\u043c 50 \u043c",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Rope/cordage or not_found \u2014 not industrial burner",
+      "actual_summary": "28.21.11.111-00000005 \u0413\u043e\u0440\u0435\u043b\u043a\u0430 \u043f\u0440\u043e\u043c\u044b\u0448\u043b\u0435\u043d\u043d\u0430\u044f"
+    },
+    {
+      "id": "BR-073",
+      "severity": "medium",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041f\u0430\u0440\u0430\u0446\u0435\u0442\u0430\u043c\u043e\u043b \u0442\u0430\u0431\u043b\u0435\u0442\u043a\u0438 500 \u043c\u0433",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "out_of_scope true",
+      "actual_summary": "not_found, out_of_scope false"
+    },
+    {
+      "id": "BR-074",
+      "severity": "high",
+      "category": "duplicate_chars",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body_note": "characteristics = [{\"name\":\"Поле{i}\",\"value\":\"x\"} for i in range(40)]",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Reject unknown names or single merged row",
+      "actual_summary": "40\u00d7 portal \u00ab\u041f\u043e\u043b\u00bb=x via prefix canon"
+    },
+    {
+      "id": "BR-075",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041f\u043e\u0434\u0441\u0442\u0430\u0432\u043a\u0430 \u0434\u043b\u044f \u043d\u043e\u0433\u0438 \u0433\u0438\u0442\u0430\u0440\u0438\u0441\u0442\u0430 \u043c\u0435\u0442\u0430\u043b\u043b",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "not_found/out_of_scope for non-hackathon category",
+      "actual_summary": "31.01.11.150-00000017 need_more"
+    },
+    {
+      "id": "BR-076",
+      "severity": "medium",
+      "category": "outdated_code",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439 31.01.10.000-00000006 \u0438 31.01.10.000-00000004",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Prefer cited v12 …00000006",
+      "actual_summary": "best …00000004"
+    },
+    {
+      "id": "BR-077",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv?stream=1",
+        "multipart_csv_note": "500 rows name\\n\u041c\u043e\u043b\u043e\u0442\u043e\u043a \u0441\u043b\u0435\u0441\u0430\u0440\u043d\u044b\u0439 500 \u0433"
+      },
+      "expected": "500-row stream within ~10s",
+      "actual_summary": "~15.3s wall, 501 NDJSON lines"
+    },
+    {
+      "id": "BR-078",
+      "severity": "medium",
+      "category": "mixed_language",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Office desk laminate 1200mm",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "31.01.10 desk or out_of_scope",
+      "actual_summary": "not_found, out_of_scope false"
+    },
+    {
+      "id": "BR-079",
+      "severity": "high",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u529e\u516c\u684c 1200\u6beb\u7c73",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Consistent with BR-078 (both out_of_scope or both attempt match)",
+      "actual_summary": "not_found, out_of_scope true"
+    },
+    {
+      "id": "BR-080",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0411\u043e\u0442\u0438\u043d\u043a\u0438 \u0440\u0430\u0431\u043e\u0447\u0438\u0435 \u043a\u043e\u0441\u0442\u044e\u043c \u043a\u043e\u043c\u043f\u043b\u0435\u043a\u0442",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Boots or suit KTRU / ambiguous bundle",
+      "actual_summary": "15.20.32.126-00000001 \u0432\u0438\u0431\u0440\u043e\u0437\u0430\u0449\u0438\u0442\u043d\u0430\u044f \u043e\u0431\u0443\u0432\u044c"
+    },
+    {
+      "id": "BR-081",
+      "severity": "medium",
+      "category": "unit_guess",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0414\u0440\u0435\u043b\u044c \u0430\u043a\u043a\u0443\u043c\u0443\u043b\u044f\u0442\u043e\u0440\u043d\u0430\u044f \u043c\u043e\u0449\u043d\u043e\u0441\u0442\u044c 500 Wh",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Treat Wh as energy or reject — not drill power W",
+      "actual_summary": "28.24.11.* need_more + unit issue"
+    },
+    {
+      "id": "BR-082",
+      "severity": "high",
+      "category": "csv_encoding",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv_note": "UTF-16 LE BOM name\\n\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439\\n"
+      },
+      "expected": "Detect UTF-16 or 422",
+      "actual_summary": "Misread cp1251 ; no header; 3 garbage rows"
+    },
+    {
+      "id": "BR-083",
+      "severity": "high",
+      "category": "csv",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv": "name,name\n\u0421\u0442\u043e\u043b,\u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439\n"
+      },
+      "expected": "Recognize header; 31.01.10 desk",
+      "actual_summary": "Row name,name not_found; data row \u2192 31.01.12.110"
+    },
+    {
+      "id": "BR-084",
+      "severity": "medium",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041a\u043e\u0441\u0442\u044e\u043c \u0440\u0430\u0431\u043e\u0447\u0438\u0439 \u0440\u043e\u0441\u0442 170 \u0434\u043e 176",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Range 170–176 on portal/KTRU height",
+      "actual_summary": "\u0420\u0430\u0437\u043c\u0435\u0440/\u0440\u043e\u0441\u0442=170 only; card complete"
+    },
+    {
+      "id": "BR-085",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body_note": "100 parallel identical POSTs",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439 \u041b\u0414\u0421\u041f",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Stable low latency under load",
+      "actual_summary": "~3.3s wall for 100 concurrent requests"
+    },
+    {
+      "id": "BR-086",
+      "severity": "low",
+      "category": "validation",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "   ",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "422 or explicit empty-input error",
+      "actual_summary": "not_found incomplete (empty string returns 422)"
+    }
+  ]
+}
