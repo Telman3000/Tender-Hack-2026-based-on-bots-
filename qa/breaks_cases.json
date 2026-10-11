@@ -1,7 +1,7 @@
 {
   "version": 1,
   "server": "http://127.0.0.1:8000",
-  "materials_note": "Yandex Disk archive unavailable; KTRU built from keysystems mirror — see docs/breaks.md Setup.",
+  "materials_note": "Official materials under _materials/yandex_retry2 (Yandex Disk «Казань 2026»); build_index → data/processed/catalog.db — see docs/breaks.md Setup.",
   "cases": [
     {
       "id": "BR-001",
@@ -847,6 +847,223 @@
       },
       "expected": "<=100ms",
       "actual_summary": "~248ms elapsed"
+    },
+    {
+      "id": "BR-052",
+      "severity": "critical",
+      "category": "card_status",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Костюм рабочий мужской размер 48-50 рост 170-176",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "KTRU+portal characteristics; incomplete until required KTRU fields filled",
+      "actual_summary": "ok complete; 2 portal chars only; ktru_char_values=0 for 14.12.10.000-00000002 in index",
+      "note": "requires full portal index (yandex_retry2)"
+    },
+    {
+      "id": "BR-053",
+      "severity": "high",
+      "category": "homoglyph",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "St\u043el pismennyi LDSP vysota 750 mm",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "31.01.10 writing desk or graceful translit",
+      "actual_summary": "not_found, best_ktru null"
+    },
+    {
+      "id": "BR-054",
+      "severity": "high",
+      "category": "mixed_language",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b pismennyi \u041b\u0414\u0421\u041f 750 \u043c\u043c",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "31.01.10.* \u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439",
+      "actual_summary": "31.09.10.000-00000003 need_more"
+    },
+    {
+      "id": "BR-055",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0413\u0438\u0442\u0430\u0440\u0430 \u0430\u043a\u0443\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "out_of_scope or not_found \u2014 not industrial equipment",
+      "actual_summary": "28.25.14.129-00000013 \u0423\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430 \u0442\u0435\u0440\u043c\u043e\u043a\u0430\u0442\u0430\u043b\u0438\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f"
+    },
+    {
+      "id": "BR-056",
+      "severity": "medium",
+      "category": "out_of_scope",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041f\u0438\u0430\u043d\u0438\u043d\u043e \u0430\u043a\u0443\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0435",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "out_of_scope true (musical instrument)",
+      "actual_summary": "not_found, out_of_scope false"
+    },
+    {
+      "id": "BR-057",
+      "severity": "high",
+      "category": "unit_guess",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041c\u043e\u043b\u043e\u0442\u043e\u043a \u0441\u043b\u0435\u0441\u0430\u0440\u043d\u044b\u0439 \u043c\u0430\u0441\u0441\u0430 0.5 \u0442",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Reject or convert 0.5 t \u2192 500 kg with sanity check",
+      "actual_summary": "ok complete; \u041c\u0430\u0441\u0441\u0430 \u043c\u043e\u043b\u043e\u0442\u043a\u0430=0.5 \u043a\u0433; unit warning only"
+    },
+    {
+      "id": "BR-058",
+      "severity": "medium",
+      "category": "csv",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv_note": "UTF-8 tab-separated: name\\ttext\\n\\t\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439\\n"
+      },
+      "expected": "Parse second column or detect wrong layout",
+      "actual_summary": "error \u041f\u0443\u0441\u0442\u043e\u0435 \u043d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435"
+    },
+    {
+      "id": "BR-059",
+      "severity": "high",
+      "category": "mixed_language",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "Kostium rabochii razmer 48-50",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "14.12.* suit or not_found",
+      "actual_summary": "14.12.30.160-00000515 \u041e\u0447\u043a\u0438 \u0434\u043b\u044f \u0437\u0430\u0449\u0438\u0442\u044b \u043e\u0442 \u0440\u0430\u0434\u0438\u0430\u0446\u0438\u0438 ambiguous"
+    },
+    {
+      "id": "BR-060",
+      "severity": "medium",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439 \u0448\u0438\u0440\u0438\u043d\u0430 120-130",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "Range 120\u2013130 mm stored or flagged",
+      "actual_summary": "\u0428\u0438\u0440\u0438\u043d\u0430=120 \u043c\u043c only"
+    },
+    {
+      "id": "BR-061",
+      "severity": "high",
+      "category": "validation",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0414\u0438\u0432\u0430\u043d \u0424\u0440\u0438\u0441\u0442\u0430\u0439\u043b \u0414\u043e\u043c\u0438\u043d\u043e 2-\u0445 \u043c\u0435\u0441\u0442\u043d\u044b\u0439 \u0412 \u0441\u043e\u0441\u0442\u0430\u0432\u0435 \u043d\u0430\u0431\u043e\u0440\u0430 \u043c\u0435\u0431\u0435\u043b\u0438 \u041d\u0435\u0442 \u0412\u0438\u0434 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u0430 \u043d\u0430\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f \u0412\u044b\u0441\u043e\u043a\u043e\u044d\u043b\u0430\u0441\u0442\u0438\u0447\u043d\u044b\u0439 \u043f\u043e\u0440\u043e\u043b\u043e\u043d HR5535 \u0412\u0438\u0434 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u0430 \u043d\u043e\u0436\u0435\u043a/\u043e\u043f\u043e\u0440 \u041c\u0435\u0442\u0430\u043b\u043b",
+          "domain_hint": "furniture"
+        }
+      },
+      "expected": "not_allowed \u2192 error/invalid card (holdout H17)",
+      "actual_summary": "not_allowed severity warning; card_status incomplete"
+    },
+    {
+      "id": "BR-062",
+      "severity": "high",
+      "category": "csv",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv_note": "Double BOM UTF-8: \\ufeff\\ufeffname\\n\u0421\u0442\u043e\u043b\\n"
+      },
+      "expected": "31.01.10 desk",
+      "actual_summary": "31.01.12.110 conference table"
+    },
+    {
+      "id": "BR-063",
+      "severity": "medium",
+      "category": "performance",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/batch?stream=1",
+        "body_note": "500\u00d7 {\"id\":\"n\",\"text\":\"\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439\",\"domain_hint\":\"furniture\"}"
+      },
+      "expected": "Batch/stream within ~10s budget",
+      "actual_summary": "~13.3s wall for 500 NDJSON lines"
+    },
+    {
+      "id": "BR-064",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0422\u0440\u0443\u0431\u0430 \u043c\u0435\u0434\u043d\u0430\u044f 15 \u043c\u043c",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Plumbing/pipe KTRU or out_of_scope \u2014 not Venturi tube",
+      "actual_summary": "28.25.14.125-00000002 \u0422\u0440\u0443\u0431\u0430 \u0412\u0435\u043d\u0442\u0443\u0440\u0438"
+    },
+    {
+      "id": "BR-065",
+      "severity": "high",
+      "category": "wrong_ktru",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0411\u0430\u0440\u0430\u0431\u0430\u043d \u043c\u0430\u043b\u044b\u0439 \u043b\u0430\u0442\u0443\u043d\u043d\u044b\u0439",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Musical/percussion out_of_scope or not_found",
+      "actual_summary": "28.21.12.000-00000004 \u0411\u0430\u0440\u0430\u0431\u0430\u043d \u043f\u0440\u043e\u043a\u0430\u043b\u043e\u0447\u043d\u044b\u0439"
+    },
+    {
+      "id": "BR-066",
+      "severity": "medium",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041a\u043e\u0441\u0442\u044e\u043c \u0440\u0430\u0431\u043e\u0447\u0438\u0439 \u043c\u0443\u0436\u0441\u043a\u043e\u0439 \u0440\u0430\u0437\u043c\u0435\u0440 48-50 \u0440\u043e\u0441\u0442 170-176",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "48-50 and 170-176 ranges preserved",
+      "actual_summary": "portal \u0420\u0430\u0437\u043c\u0435\u0440=48, \u0420\u0430\u0437\u043c\u0435\u0440/\u0440\u043e\u0441\u0442=170"
     }
   ]
 }

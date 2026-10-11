@@ -1,16 +1,15 @@
 # Red-team breaks (KTRU matching / `POST /api/analyze`)
 
 **Branch:** `cursor/red-team-ktru-breaks-3b39`  
-**Environment:** `catalog.db` built 2026-10-11 from `_materials/` (see Setup). Server: `uvicorn app.main:app` on `127.0.0.1:8000`.
+**Environment:** `data/processed/catalog.db` built **2026-10-11** from official hackathon materials under `_materials/yandex_retry2/` (see Setup). Server: `uvicorn app.main:app` on `127.0.0.1:8000`.
 
 ## Setup (repro)
 
-1. **Materials:** Official archive https://disk.yandex.ru/d/5Olg3IoYYf4loA was **unavailable** from the cloud agent (Yandex Disk 500 / captcha). Fallback used:
-   - Downloaded 82 `nsiKTRUs_all_*.xml.zip` parts from the public EIS mirror `keysystems.ru` into `_materials/ktru_parts/`.
-   - Built hackathon-shaped `КТРУ/КТРУ xml.zip` via `python scripts/assemble_materials_from_mirror.py` (renames XML to `*all_actual*` for `build_index`).
-   - **Portal XLSX (official):** Yandex Disk still returns HTTP 500 (retried 2026-10-11). For portal-specific retests, **minimal fixtures** were generated under `_materials/Примеры выгрузок/` via `scripts/create_minimal_portal_fixture.py` (7 STE / 7 portal_chars — not a substitute for full hackathon exports).
-2. `python -m scripts.build_index --materials _materials`
-3. `uvicorn app.main:app --host 127.0.0.1 --port 8000`
+1. **Materials (official, Yandex Disk):** `yadown` succeeded 2026-10-11 → tree copied to `_materials/yandex_retry2/` (includes `КТРУ/КТРУ xml.zip` ~102 MB and full `Примеры выгрузок/{Одежда,Мебель,Инструменты}.xlsx`). Earlier mirror-only builds used `scripts/assemble_materials_from_mirror.py` + `scripts/create_minimal_portal_fixture.py` (see BR-045–BR-048 notes).
+2. `python -m scripts.build_index --materials _materials/yandex_retry2` → **3030** KTRU, **60000** `portal_ste`, **99498** `portal_chars` (typical hackathon scale).
+3. `uvicorn app.main:app --host 127.0.0.1 --port 8000` (reads `data/processed/catalog.db` via `CATALOG_DB` default).
+
+**Index sanity:** for QA CL01 code `14.12.10.000-00000002`, table `ktru_char_values` has **0** rows (only 2-byte `chars_json` stub) — drives BR-052/BR-048 on full export.
 
 ---
 
@@ -411,11 +410,11 @@ Full JSON bodies: `qa/breaks_cases.json`. Summary:
 
 | severity | count |
 |----------|------:|
-| critical | 4 |
-| high | 23 |
-| medium | 23 |
+| critical | 5 |
+| high | 32 |
+| medium | 28 |
 | low | 3 |
-| **total** | **50** |
+| **total** | **68** |
 
 ### Round 2 (BR-033–BR-044) {#round2}
 
@@ -497,18 +496,50 @@ name
 
 ---
 
+### Round 3 — official portal index (`yandex_retry2`) {#round3}
+
+Full portal rebuild (`60000` STE). Copy-paste bodies: `qa/breaks_cases.json` + runner `qa/redteam_round3.py`.
+
+| id | severity | category | summary |
+|----|----------|----------|---------|
+| BR-052 | critical | card_status / portal | QA **CL01**: `status=ok`, `card_status=complete`, **`characteristics` = 2× `source: portal` only** («Размер», «Размер/рост»); **`ktru_char_values` = 0** in DB for `14.12.10.000-00000002`; `fill=null`, `missing_characteristics=[]` |
+| BR-053 | high | homoglyph | `St\u043el pismennyi…` (Latin + Cyrillic «о») → **`not_found`**, no desk candidate (translit path fails) |
+| BR-054 | high | mixed_language | `Стол pismennyi ЛДСП` → **`31.09.10.000-00000003`**, not `31.01.10` writing desk |
+| BR-055 | high | wrong_ktru | `Гитара акустическая` + `domain_hint: tools` → **`28.25.14.129-00000013`** «Установка термокаталитическая» |
+| BR-056 | medium | out_of_scope | `Пианино акустическое` + `furniture` → `not_found`, **`out_of_scope: false`** |
+| BR-057 | high | unit_guess | «Молоток… **масса 0.5 т**» → stored **`0.5` кг** (`unit` warning only), not 500 kg; contrasts with **500 kg → error** (realistic cap) |
+| BR-058 | medium | csv | Tab CSV `name\ttext` + `\tСтол письменный` → row **`Пустое наименование`** (product in wrong column) |
+| BR-059 | high | mixed_language | `Kostium rabochii razmer 48-50` + `clothing` → **`14.12.30.160-00000515`** «Очки… от радиации», `ambiguous` |
+| BR-060 | medium | numeric_parse | «ширина **120-130**» → **single value `120` мм**, upper bound dropped |
+| BR-061 | high | validation | Holdout **H17** (диван + «высокоэластичный поролон»): `not_allowed` issue severity **`warning` only**, card stays **`incomplete`** not `invalid` |
+| BR-062 | high | csv | **Double UTF-8 BOM** + `name\nСтол` → **`31.01.12.110`** conference table (BOM corrupts header/name) |
+| BR-063 | medium | performance | `POST /api/analyze/batch?stream=1` × **500** identical rows → **~13.3 s** wall (>>10 s CSV/batch budget) |
+| BR-064 | high | wrong_ktru | «**Труба медная** 15 мм» + `tools` → **`28.25.14.125-00000002` Труба Вентури** |
+| BR-065 | high | wrong_ktru | «**Барабан малый** латунный» + `tools` → **`28.21.12.000-00000004` Барабан прокалочный** (not percussion) |
+| BR-066 | medium | numeric_parse | CL01 text «48-**50**» / «170-**176**» → portal values **`48`** and **`170` only** (range tail lost) |
+
+**CL01 JSON (official index):**
+
+```json
+{"text": "Костюм рабочий мужской размер 48-50 рост 170-176", "domain_hint": "clothing"}
+```
+
+**Actual:** `best_ktru.code` `14.12.10.000-00000002`, `card_status` `complete`, two portal characteristics only (see BR-052).
+
+---
+
 ## Top 10 most damaging
 
-1. **BR-020** — Hand hammer + «18 В» → electric-tool KTRU with `ok`/`complete`.  
-2. **BR-001** — Office desk + `domain_hint: tools` → machine-table 28.41 KTRU.  
-3. **BR-023** — Wardrobe + tools hint → window hardware 25.72.  
-4. **BR-003** — CSV comma in name → conference table instead of writing desk.  
-5. **BR-004 / BR-018 / BR-028** — `ok`+`complete` while «Рост» stays `new_property`.  
-6. **BR-026** — Bit/driver wording → kitchen knife set KTRU.  
-7. **BR-025** — Violin under tools hint → pencil sharpener (not out-of-scope).  
-8. **BR-006** — Rubber boots → metal-toe shoe code (H09).  
-9. **BR-021** — Screwdriver + RPM unit alone → шуруповерт classification.  
-10. **BR-009** — Typo suggestion «резиновый» → «бензиновый».
+1. **BR-052** — CL01 «complete» card with **zero KTRU characteristics** loaded for suit code (portal-only 2 fields).  
+2. **BR-020** — Hand hammer + «18 В» → electric-tool KTRU with `ok`/`complete`.  
+3. **BR-001** — Office desk + `domain_hint: tools` → machine-table 28.41 KTRU.  
+4. **BR-055** — Guitar + tools hint → industrial «термокаталитическая установка».  
+5. **BR-003** — CSV comma in name → conference table instead of writing desk.  
+6. **BR-023** — Wardrobe + tools hint → window hardware 25.72.  
+7. **BR-004 / BR-018 / BR-028** — `ok`+`complete` while «Рост» stays `new_property` (KTRU-only / minimal portal).  
+8. **BR-026** — Bit/driver wording → kitchen knife set KTRU.  
+9. **BR-006** — Rubber boots → metal-toe shoe code (H09).  
+10. **BR-057** — Tonne unit silently treated as kilograms on hammer mass.
 
 ---
 
