@@ -411,10 +411,10 @@ Full JSON bodies: `qa/breaks_cases.json`. Summary:
 | severity | count |
 |----------|------:|
 | critical | 5 |
-| high | 39 |
-| medium | 36 |
+| high | 41 |
+| medium | 37 |
 | low | 3 |
-| **total** | **83** |
+| **total** | **86** |
 
 ### Round 2 (BR-033–BR-044) {#round2}
 
@@ -531,6 +531,10 @@ Full portal rebuild (`60000` STE). Copy-paste bodies: `qa/breaks_cases.json` + r
 | BR-078 | medium | mixed_language | **`Office desk laminate 1200mm`** + `furniture` → `not_found`, **`out_of_scope: false`** |
 | BR-079 | high | out_of_scope | **`办公桌 1200毫米`** → `not_found`, **`out_of_scope: true`** while English desk (BR-078) is false — **inconsistent language UX** |
 | BR-080 | high | wrong_ktru | «**Ботинки рабочие костюм комплект**» → **`15.20.32.126-00000001`** vibro **shoe**, not suit/boots sanity |
+| BR-081 | medium | unit_guess | «Дрель… **500 Wh**» → **`28.24.11.*`**, `unit` issue (confused **Wh** with power **W**) |
+| BR-082 | high | csv_encoding | **UTF-16** CSV misread as **`cp1251`/`;`**, `header: false` → **3 garbage rows** / `not_found` |
+| BR-083 | high | csv | Header row **`name,name`** not skipped → analyzed as product **`name,name`** (`not_found`) + comma-split data row → **31.01.12.110** |
+| BR-084 | medium | numeric_parse | «рост **170 до 176**» → portal **`170` only** (same class as BR-060/BR-066) |
 
 **CL01 JSON (official index):**
 

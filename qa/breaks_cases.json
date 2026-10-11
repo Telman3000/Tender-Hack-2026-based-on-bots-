@@ -1272,6 +1272,60 @@
       },
       "expected": "Boots or suit KTRU / ambiguous bundle",
       "actual_summary": "15.20.32.126-00000001 \u0432\u0438\u0431\u0440\u043e\u0437\u0430\u0449\u0438\u0442\u043d\u0430\u044f \u043e\u0431\u0443\u0432\u044c"
+    },
+    {
+      "id": "BR-081",
+      "severity": "medium",
+      "category": "unit_guess",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u0414\u0440\u0435\u043b\u044c \u0430\u043a\u043a\u0443\u043c\u0443\u043b\u044f\u0442\u043e\u0440\u043d\u0430\u044f \u043c\u043e\u0449\u043d\u043e\u0441\u0442\u044c 500 Wh",
+          "domain_hint": "tools"
+        }
+      },
+      "expected": "Treat Wh as energy or reject — not drill power W",
+      "actual_summary": "28.24.11.* need_more + unit issue"
+    },
+    {
+      "id": "BR-082",
+      "severity": "high",
+      "category": "csv_encoding",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv_note": "UTF-16 LE BOM name\\n\u0421\u0442\u043e\u043b \u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439\\n"
+      },
+      "expected": "Detect UTF-16 or 422",
+      "actual_summary": "Misread cp1251 ; no header; 3 garbage rows"
+    },
+    {
+      "id": "BR-083",
+      "severity": "high",
+      "category": "csv",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze/csv",
+        "multipart_csv": "name,name\n\u0421\u0442\u043e\u043b,\u043f\u0438\u0441\u044c\u043c\u0435\u043d\u043d\u044b\u0439\n"
+      },
+      "expected": "Recognize header; 31.01.10 desk",
+      "actual_summary": "Row name,name not_found; data row \u2192 31.01.12.110"
+    },
+    {
+      "id": "BR-084",
+      "severity": "medium",
+      "category": "numeric_parse",
+      "request": {
+        "method": "POST",
+        "path": "/api/analyze",
+        "body": {
+          "text": "\u041a\u043e\u0441\u0442\u044e\u043c \u0440\u0430\u0431\u043e\u0447\u0438\u0439 \u0440\u043e\u0441\u0442 170 \u0434\u043e 176",
+          "domain_hint": "clothing"
+        }
+      },
+      "expected": "Range 170–176 on portal/KTRU height",
+      "actual_summary": "\u0420\u0430\u0437\u043c\u0435\u0440/\u0440\u043e\u0441\u0442=170 only; card complete"
     }
   ]
 }
